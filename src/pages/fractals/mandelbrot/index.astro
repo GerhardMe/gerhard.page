@@ -1,0 +1,417 @@
+---
+const title = "Mandelbrot Explorer";
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>{title}</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                width: 100%;
+                background: #000;
+                color: #fff;
+                font-family: system-ui, sans-serif;
+            }
+            body {
+                display: flex;
+                flex-direction: column;
+            }
+            header {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+                background: #111;
+                border-bottom: 1px solid #222;
+            }
+            #wrapper {
+                flex: 1;
+                position: relative;
+            }
+            #mandel {
+                width: 100%;
+                height: 100%;
+                display: block;
+                touch-action: none; /* important for custom pinch/pan */
+            }
+            #info {
+                position: absolute;
+                left: 0.5rem;
+                bottom: 0.5rem;
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+                background: rgba(0, 0, 0, 0.5);
+                border-radius: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            {title} — scroll to zoom, drag to pan, pinch to zoom
+        </header>
+        <div id="wrapper">
+            <canvas id="mandel"></canvas>
+            <div id="info"></div>
+        </div>
+
+        <script>
+            window.addEventListener("load", () => {
+                const canvas = document.getElementById("mandel");
+                const infoEl = document.getElementById("info");
+
+                const gl = canvas.getContext("webgl");
+                if (!gl) {
+                    if (infoEl) infoEl.textContent = "WebGL not supported";
+                    return;
+                }
+
+                // === Shaders ===
+
+                const vertSrc = `
+          attribute vec2 a_position;
+          varying vec2 v_pos;
+
+          void main() {
+            v_pos = a_position;
+            gl_Position = vec4(a_position, 0.0, 1.0);
+          }
+        `;
+
+                const fragSrc = `
+          precision highp float;
+
+          varying vec2 v_pos;
+
+          uniform vec2 u_center;
+          uniform float u_scale;
+          uniform int u_maxIter;
+          uniform float u_ratio;
+
+          void main() {
+            float x0 = (v_pos.x * u_ratio) * u_scale + u_center.x;
+            float y0 = v_pos.y * u_scale + u_center.y;
+
+            float x = 0.0;
+            float y = 0.0;
+            int iter = 0;
+            const float escapeRadius = 4.0;
+
+            for (int i = 0; i < 5000; i++) {
+              if (i >= u_maxIter) break;
+
+              float x2 = x * x - y * y + x0;
+              float y2 = 2.0 * x * y + y0;
+              x = x2;
+              y = y2;
+
+              if (x * x + y * y > escapeRadius) {
+                iter = i;
+                break;
+              }
+              iter = i;
+            }
+
+            float t = float(iter) / float(u_maxIter);
+
+            vec3 color = vec3(
+              pow(t, 0.3),
+              t * t,
+              t
+            );
+
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `;
+
+                function createShader(gl, type, source) {
+                    const shader = gl.createShader(type);
+                    gl.shaderSource(shader, source);
+                    gl.compileShader(shader);
+                    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                        console.error(gl.getShaderInfoLog(shader));
+                        gl.deleteShader(shader);
+                        return null;
+                    }
+                    return shader;
+                }
+
+                function createProgram(gl, vertSrc, fragSrc) {
+                    const vs = createShader(gl, gl.VERTEX_SHADER, vertSrc);
+                    const fs = createShader(gl, gl.FRAGMENT_SHADER, fragSrc);
+                    const program = gl.createProgram();
+                    gl.attachShader(program, vs);
+                    gl.attachShader(program, fs);
+                    gl.linkProgram(program);
+                    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                        console.error(gl.getProgramInfoLog(program));
+                        gl.deleteProgram(program);
+                        return null;
+                    }
+                    return program;
+                }
+
+                const program = createProgram(gl, vertSrc, fragSrc);
+                gl.useProgram(program);
+
+                const aPositionLoc = gl.getAttribLocation(
+                    program,
+                    "a_position",
+                );
+                const uCenterLoc = gl.getUniformLocation(program, "u_center");
+                const uScaleLoc = gl.getUniformLocation(program, "u_scale");
+                const uMaxIterLoc = gl.getUniformLocation(program, "u_maxIter");
+                const uRatioLoc = gl.getUniformLocation(program, "u_ratio");
+
+                // full-screen quad
+                const positions = new Float32Array([
+                    -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
+                ]);
+                const positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+                gl.enableVertexAttribArray(aPositionLoc);
+                gl.vertexAttribPointer(aPositionLoc, 2, gl.FLOAT, false, 0, 0);
+
+                // === View state ===
+
+                let centerX = -0.5;
+                let centerY = 0.0;
+                let scale = 1.5; // half-height of view window in complex plane units
+                let maxIter = 300;
+
+                // mouse / pointer pan
+                let isDragging = false;
+                let lastX = 0;
+                let lastY = 0;
+
+                // touch pinch
+                let isPinching = false;
+                let lastPinchDist = 0;
+
+                function resize() {
+                    const dpr = window.devicePixelRatio || 1;
+                    const rect = canvas.getBoundingClientRect();
+                    const width = rect.width * dpr;
+                    const height = rect.height * dpr;
+                    if (canvas.width !== width || canvas.height !== height) {
+                        canvas.width = width;
+                        canvas.height = height;
+                        gl.viewport(0, 0, width, height);
+                    }
+                }
+
+                function render() {
+                    resize();
+                    const ratio = canvas.width / canvas.height;
+
+                    gl.useProgram(program);
+                    gl.uniform2f(uCenterLoc, centerX, centerY);
+                    gl.uniform1f(uScaleLoc, scale);
+                    gl.uniform1i(uMaxIterLoc, maxIter);
+                    gl.uniform1f(uRatioLoc, ratio);
+
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+                    if (infoEl) {
+                        infoEl.textContent =
+                            `center=(${centerX.toFixed(8)}, ${centerY.toFixed(8)}) ` +
+                            `scale=${scale.toExponential(2)} ` +
+                            `maxIter=${maxIter}`;
+                    }
+                }
+
+                // helper: zoom around a given clientX/clientY
+                function zoomAt(clientX, clientY, zoomFactor) {
+                    const rect = canvas.getBoundingClientRect();
+                    const aspect = rect.width / rect.height;
+
+                    const nx = ((clientX - rect.left) / rect.width) * 2.0 - 1.0;
+                    const ny = ((clientY - rect.top) / rect.height) * 2.0 - 1.0;
+
+                    const worldXBefore = nx * aspect * scale + centerX;
+                    const worldYBefore = ny * scale + centerY;
+
+                    scale *= zoomFactor;
+
+                    // adjust iteration count mildly with zoom
+                    if (zoomFactor < 1.0) {
+                        maxIter = Math.min(5000, Math.floor(maxIter * 1.05));
+                    } else {
+                        maxIter = Math.max(50, Math.floor(maxIter / 1.02));
+                    }
+
+                    const worldXAfter = nx * aspect * scale + centerX;
+                    const worldYAfter = ny * scale + centerY;
+
+                    centerX += worldXBefore - worldXAfter;
+                    centerY += worldYBefore - worldYAfter;
+
+                    render();
+                }
+
+                // === Wheel zoom (cursor-relative, original direction) ===
+
+                const ZOOM_SPEED = 0.003; // same value you liked, direction restored
+
+                canvas.addEventListener(
+                    "wheel",
+                    (e) => {
+                        e.preventDefault();
+                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED);
+                        zoomAt(e.clientX, e.clientY, zoomFactor);
+                    },
+                    { passive: false },
+                );
+
+                // === Mouse pan ===
+
+                canvas.addEventListener("mousedown", (e) => {
+                    isDragging = true;
+                    lastX = e.clientX;
+                    lastY = e.clientY;
+                });
+
+                window.addEventListener("mousemove", (e) => {
+                    if (!isDragging) return;
+                    const rect = canvas.getBoundingClientRect();
+                    const aspect = rect.width / rect.height;
+
+                    const dx = e.clientX - lastX;
+                    const dy = e.clientY - lastY;
+                    lastX = e.clientX;
+                    lastY = e.clientY;
+
+                    const ndx = (dx / rect.width) * 2.0;
+                    const ndy = (dy / rect.height) * 2.0;
+
+                    centerX -= ndx * scale * aspect;
+                    centerY += ndy * scale;
+
+                    render();
+                });
+
+                window.addEventListener("mouseup", () => {
+                    isDragging = false;
+                });
+
+                // === Touch: pan and pinch zoom ===
+
+                function distance(t1, t2) {
+                    const dx = t2.clientX - t1.clientX;
+                    const dy = t2.clientY - t1.clientY;
+                    return Math.hypot(dx, dy);
+                }
+
+                canvas.addEventListener(
+                    "touchstart",
+                    (e) => {
+                        e.preventDefault();
+                        if (e.touches.length === 1) {
+                            // single finger pan
+                            isDragging = true;
+                            isPinching = false;
+                            const t = e.touches[0];
+                            lastX = t.clientX;
+                            lastY = t.clientY;
+                        } else if (e.touches.length === 2) {
+                            // start pinch
+                            isDragging = false;
+                            isPinching = true;
+                            const t1 = e.touches[0];
+                            const t2 = e.touches[1];
+                            lastPinchDist = distance(t1, t2);
+                        }
+                    },
+                    { passive: false },
+                );
+
+                canvas.addEventListener(
+                    "touchmove",
+                    (e) => {
+                        e.preventDefault();
+
+                        if (
+                            e.touches.length === 1 &&
+                            isDragging &&
+                            !isPinching
+                        ) {
+                            // one-finger pan
+                            const rect = canvas.getBoundingClientRect();
+                            const aspect = rect.width / rect.height;
+
+                            const t = e.touches[0];
+                            const dx = t.clientX - lastX;
+                            const dy = t.clientY - lastY;
+                            lastX = t.clientX;
+                            lastY = t.clientY;
+
+                            const ndx = (dx / rect.width) * 2.0;
+                            const ndy = (dy / rect.height) * 2.0;
+
+                            centerX -= ndx * scale * aspect;
+                            centerY += ndy * scale;
+
+                            render();
+                        } else if (e.touches.length === 2) {
+                            // pinch zoom
+                            const t1 = e.touches[0];
+                            const t2 = e.touches[1];
+                            const newDist = distance(t1, t2);
+
+                            if (!isPinching) {
+                                isPinching = true;
+                                lastPinchDist = newDist;
+                                return;
+                            }
+
+                            if (newDist > 0 && lastPinchDist > 0) {
+                                // zoomFactor semantics: >1 = zoom out, <1 = zoom in
+                                const zoomFactor = lastPinchDist / newDist;
+                                const centerClientX =
+                                    (t1.clientX + t2.clientX) * 0.5;
+                                const centerClientY =
+                                    (t1.clientY + t2.clientY) * 0.5;
+                                zoomAt(
+                                    centerClientX,
+                                    centerClientY,
+                                    zoomFactor,
+                                );
+                            }
+
+                            lastPinchDist = newDist;
+                        }
+                    },
+                    { passive: false },
+                );
+
+                canvas.addEventListener(
+                    "touchend",
+                    (e) => {
+                        e.preventDefault();
+                        if (e.touches.length === 0) {
+                            isDragging = false;
+                            isPinching = false;
+                        } else if (e.touches.length === 1) {
+                            // back to single-finger mode
+                            isPinching = false;
+                            const t = e.touches[0];
+                            lastX = t.clientX;
+                            lastY = t.clientY;
+                        }
+                    },
+                    { passive: false },
+                );
+
+                window.addEventListener("resize", () => {
+                    render();
+                });
+
+                // initial draw
+                render();
+            });
+        </script>
+    </body>
+</html>
