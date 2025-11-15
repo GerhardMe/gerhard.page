@@ -86,6 +86,20 @@ select {
     font-style: normal;
 }
 
+@font-face {
+    font-family: "sans";
+    src: url("/fonts/OpenSans-VariableFont_wght.wght.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Palatino Linotype";
+    src: url("/fonts/Palatino-Linotype-Regular.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
 .icon {
     font-family: "Icons";
 }
