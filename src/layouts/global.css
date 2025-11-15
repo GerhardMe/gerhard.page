@@ -81,7 +81,11 @@ select {
 
 @font-face {
     font-family: "Icons";
-    src: url("/fonts/icons.ttf") format("truetype");
+    src: url("/fonts/forkawesome-webfont.ttf") format("truetype");
     font-weight: normal;
     font-style: normal;
+}
+
+.icon {
+    font-family: "Icons";
 }

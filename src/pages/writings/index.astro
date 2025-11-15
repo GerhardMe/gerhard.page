@@ -8,6 +8,10 @@ const media = Object.values(modules);
 ---
 
 <Layout>
-  <Title title="my wrightings 🖊" about="This is where i keep my writings." />
+  <Title
+    title="my wrightings"
+    about="This is where i keep my writings."
+    icon="f040"
+  />
   <IndexList media={media} groupBy={["time", "catagory"]} List={List} />
 </Layout>
