@@ -35,7 +35,7 @@ const title = "Mandelbrot Explorer";
                 width: 100%;
                 height: 100%;
                 display: block;
-                touch-action: none; /* important for custom pinch/pan */
+                touch-action: none; /* needed for custom pinch/pan */
             }
             #info {
                 position: absolute;
@@ -179,7 +179,7 @@ const title = "Mandelbrot Explorer";
 
                 let centerX = -0.5;
                 let centerY = 0.0;
-                let scale = 1.5; // half-height of view window in complex plane units
+                let scale = 1.5; // half-height of window in complex plane units
                 let maxIter = 300;
 
                 // mouse / pointer pan
@@ -223,44 +223,49 @@ const title = "Mandelbrot Explorer";
                     }
                 }
 
-                // helper: zoom around a given clientX/clientY
-                function zoomAt(clientX, clientY, zoomFactor) {
+                // Map client (DOM) coords -> complex plane, consistent with shader
+                function clientToComplex(clientX, clientY) {
                     const rect = canvas.getBoundingClientRect();
                     const aspect = rect.width / rect.height;
 
                     const nx = ((clientX - rect.left) / rect.width) * 2.0 - 1.0;
-                    const ny = ((clientY - rect.top) / rect.height) * 2.0 - 1.0;
+                    // flip Y: DOM down = positive; NDC up = positive
+                    const ny = 1.0 - ((clientY - rect.top) / rect.height) * 2.0;
 
-                    const worldXBefore = nx * aspect * scale + centerX;
-                    const worldYBefore = ny * scale + centerY;
+                    const worldX = nx * aspect * scale + centerX;
+                    const worldY = ny * scale + centerY;
+                    return { worldX, worldY };
+                }
 
+                // Zoom around a given clientX/clientY
+                function zoomAt(clientX, clientY, zoomFactor) {
+                    const before = clientToComplex(clientX, clientY);
                     scale *= zoomFactor;
 
-                    // adjust iteration count mildly with zoom
+                    // mild iteration adjustment with zoom
                     if (zoomFactor < 1.0) {
                         maxIter = Math.min(5000, Math.floor(maxIter * 1.05));
                     } else {
                         maxIter = Math.max(50, Math.floor(maxIter / 1.02));
                     }
 
-                    const worldXAfter = nx * aspect * scale + centerX;
-                    const worldYAfter = ny * scale + centerY;
+                    const after = clientToComplex(clientX, clientY);
 
-                    centerX += worldXBefore - worldXAfter;
-                    centerY += worldYBefore - worldYAfter;
+                    centerX += before.worldX - after.worldX;
+                    centerY += before.worldY - after.worldY;
 
                     render();
                 }
 
-                // === Wheel zoom (cursor-relative, original direction) ===
+                // === Wheel zoom (cursor-relative, scroll up = zoom in) ===
 
-                const ZOOM_SPEED = 0.003; // same value you liked, direction restored
+                const ZOOM_SPEED = 0.003;
 
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
-                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED);
+                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED); // >1 down (out), <1 up (in)
                         zoomAt(e.clientX, e.clientY, zoomFactor);
                     },
                     { passive: false },
@@ -285,10 +290,10 @@ const title = "Mandelbrot Explorer";
                     lastY = e.clientY;
 
                     const ndx = (dx / rect.width) * 2.0;
-                    const ndy = (dy / rect.height) * 2.0;
+                    const ndy = -(dy / rect.height) * 2.0; // flip sign to match NDC y
 
                     centerX -= ndx * scale * aspect;
-                    centerY += ndy * scale;
+                    centerY -= ndy * scale;
 
                     render();
                 });
@@ -310,14 +315,12 @@ const title = "Mandelbrot Explorer";
                     (e) => {
                         e.preventDefault();
                         if (e.touches.length === 1) {
-                            // single finger pan
                             isDragging = true;
                             isPinching = false;
                             const t = e.touches[0];
                             lastX = t.clientX;
                             lastY = t.clientY;
                         } else if (e.touches.length === 2) {
-                            // start pinch
                             isDragging = false;
                             isPinching = true;
                             const t1 = e.touches[0];
@@ -338,7 +341,6 @@ const title = "Mandelbrot Explorer";
                             isDragging &&
                             !isPinching
                         ) {
-                            // one-finger pan
                             const rect = canvas.getBoundingClientRect();
                             const aspect = rect.width / rect.height;
 
@@ -349,14 +351,13 @@ const title = "Mandelbrot Explorer";
                             lastY = t.clientY;
 
                             const ndx = (dx / rect.width) * 2.0;
-                            const ndy = (dy / rect.height) * 2.0;
+                            const ndy = -(dy / rect.height) * 2.0;
 
                             centerX -= ndx * scale * aspect;
-                            centerY += ndy * scale;
+                            centerY -= ndy * scale;
 
                             render();
                         } else if (e.touches.length === 2) {
-                            // pinch zoom
                             const t1 = e.touches[0];
                             const t2 = e.touches[1];
                             const newDist = distance(t1, t2);
@@ -368,8 +369,7 @@ const title = "Mandelbrot Explorer";
                             }
 
                             if (newDist > 0 && lastPinchDist > 0) {
-                                // zoomFactor semantics: >1 = zoom out, <1 = zoom in
-                                const zoomFactor = lastPinchDist / newDist;
+                                const zoomFactor = lastPinchDist / newDist; // >1 fingers apart (out), <1 together (in)
                                 const centerClientX =
                                     (t1.clientX + t2.clientX) * 0.5;
                                 const centerClientY =
@@ -395,7 +395,6 @@ const title = "Mandelbrot Explorer";
                             isDragging = false;
                             isPinching = false;
                         } else if (e.touches.length === 1) {
-                            // back to single-finger mode
                             isPinching = false;
                             const t = e.touches[0];
                             lastX = t.clientX;
