@@ -18,40 +18,38 @@ const title = "Mandelbrot Explorer";
                 font-family: system-ui, sans-serif;
             }
             body {
-                display: flex;
-                flex-direction: column;
-            }
-            header {
-                padding: 0.5rem 1rem;
-                font-size: 0.9rem;
-                background: #111;
-                border-bottom: 1px solid #222;
+                margin: 0;
+                padding: 0;
             }
             #wrapper {
-                flex: 1;
-                position: relative;
+                position: fixed;
+                inset: 0;
+                overflow: hidden;
             }
             #mandel {
                 width: 100%;
                 height: 100%;
                 display: block;
-                touch-action: none; /* needed for custom pinch/pan */
+                touch-action: none;
+                cursor: grab;
+            }
+            #mandel.dragging {
+                cursor: grabbing;
             }
             #info {
                 position: absolute;
                 left: 0.5rem;
                 bottom: 0.5rem;
                 padding: 0.25rem 0.5rem;
-                font-size: 0.75rem;
+                font-size: 0.7rem;
                 background: rgba(0, 0, 0, 0.5);
                 border-radius: 4px;
+                pointer-events: none;
+                opacity: 0.7;
             }
         </style>
     </head>
     <body>
-        <header>
-            {title} — scroll to zoom, drag to pan, pinch to zoom
-        </header>
         <div id="wrapper">
             <canvas id="mandel"></canvas>
             <div id="info"></div>
@@ -61,240 +59,218 @@ const title = "Mandelbrot Explorer";
             window.addEventListener("load", () => {
                 const canvas = document.getElementById("mandel");
                 const infoEl = document.getElementById("info");
+                const ctx = canvas.getContext("2d");
 
-                const gl = canvas.getContext("webgl");
-                if (!gl) {
-                    if (infoEl) infoEl.textContent = "WebGL not supported";
+                if (!ctx) {
+                    if (infoEl) infoEl.textContent = "2D canvas not supported";
                     return;
                 }
 
-                // === Shaders ===
-
-                const vertSrc = `
-          attribute vec2 a_position;
-          varying vec2 v_pos;
-
-          void main() {
-            v_pos = a_position;
-            gl_Position = vec4(a_position, 0.0, 1.0);
-          }
-        `;
-
-                const fragSrc = `
-          precision highp float;
-
-          varying vec2 v_pos;
-
-          uniform vec2 u_center;
-          uniform float u_scale;
-          uniform int u_maxIter;
-          uniform float u_ratio;
-
-          // Simple hard-coded palette: edit these four colors
-          vec3 palette(float t) {
-            t = clamp(t, 0.0, 1.0);
-
-            vec3 col0 = vec3(0.0, 0.0, 0.0); // inside / start: black
-            vec3 col1 = vec3(0.2, 1.0, 1.0); // white / cyan
-            vec3 col2 = vec3(0.8, 1.0, 1.0); // cyan
-            vec3 col3 = vec3(0.0, 1.0, 1.0); // blue
-
-            if (t < 0.33) {
-              float u = t / 0.33;
-              return mix(col0, col1, u);
-            } else if (t < 0.66) {
-              float u = (t - 0.33) / 0.33;
-              return mix(col1, col2, u);
-            } else {
-              float u = (t - 0.66) / 0.34;
-              return mix(col2, col3, u);
-            }
-          }
-
-          void main() {
-            float x0 = (v_pos.x * u_ratio) * u_scale + u_center.x;
-            float y0 = v_pos.y * u_scale + u_center.y;
-
-            float x = 0.0;
-            float y = 0.0;
-            int iter = 0;
-            const float escapeRadius = 4.0;
-            bool escaped = false;
-
-            for (int i = 0; i < 5000; i++) {
-              if (i >= u_maxIter) break;
-
-              float x2 = x * x - y * y + x0;
-              float y2 = 2.0 * x * y + y0;
-              x = x2;
-              y = y2;
-
-              if (!escaped && x * x + y * y > escapeRadius) {
-                iter = i;
-                escaped = true;
-                break;
-              }
-            }
-
-            // Map iteration count to [0,1]; interior points (never escaped) forced to t=0 → col0
-            float t = escaped ? float(iter) / float(u_maxIter) : 0.0;
-            vec3 color = escaped ? palette(t) : vec3(0.0);
-
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `;
-
-                function createShader(gl, type, source) {
-                    const shader = gl.createShader(type);
-                    gl.shaderSource(shader, source);
-                    gl.compileShader(shader);
-                    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-                        console.error(gl.getShaderInfoLog(shader));
-                        gl.deleteShader(shader);
-                        return null;
-                    }
-                    return shader;
-                }
-
-                function createProgram(gl, vertSrc, fragSrc) {
-                    const vs = createShader(gl, gl.VERTEX_SHADER, vertSrc);
-                    const fs = createShader(gl, gl.FRAGMENT_SHADER, fragSrc);
-                    const program = gl.createProgram();
-                    gl.attachShader(program, vs);
-                    gl.attachShader(program, fs);
-                    gl.linkProgram(program);
-                    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-                        console.error(gl.getProgramInfoLog(program));
-                        gl.deleteProgram(program);
-                        return null;
-                    }
-                    return program;
-                }
-
-                const program = createProgram(gl, vertSrc, fragSrc);
-                gl.useProgram(program);
-
-                const aPositionLoc = gl.getAttribLocation(
-                    program,
-                    "a_position",
-                );
-                const uCenterLoc = gl.getUniformLocation(program, "u_center");
-                const uScaleLoc = gl.getUniformLocation(program, "u_scale");
-                const uMaxIterLoc = gl.getUniformLocation(program, "u_maxIter");
-                const uRatioLoc = gl.getUniformLocation(program, "u_ratio");
-
-                // full-screen quad
-                const positions = new Float32Array([
-                    -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
-                ]);
-                const positionBuffer = gl.createBuffer();
-                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-                gl.enableVertexAttribArray(aPositionLoc);
-                gl.vertexAttribPointer(aPositionLoc, 2, gl.FLOAT, false, 0, 0);
-
-                // === View state ===
-
+                // --------- view state ---------
                 let centerX = -0.5;
                 let centerY = 0.0;
-                let scale = 1.5; // half-height of window in complex plane units
-                let maxIter = 300;
+                let scale = 1.5; // half-height in complex plane
 
-                // mouse / pointer pan
+                const BASE_MAX_ITER = 250;
+
+                // rendering state
+                const START_STEP = 32; // block size in pixels (start coarse)
+                let currentStep = START_STEP;
+                let tileX = 0;
+                let tileY = 0;
+                let renderId = 0; // used to cancel outdated renders
+
+                // first render uses depth (coarse→fine); later renders use step=1 only
+                let firstRenderDone = false;
+
+                // interaction state
                 let isDragging = false;
                 let lastX = 0;
                 let lastY = 0;
 
-                // touch pinch
-                let isPinching = false;
-                let lastPinchDist = 0;
-
-                function resize() {
-                    const dpr = window.devicePixelRatio || 1;
+                // --------- helpers ---------
+                function resizeCanvas() {
                     const rect = canvas.getBoundingClientRect();
-                    const width = rect.width * dpr;
-                    const height = rect.height * dpr;
+                    const width = Math.max(1, Math.floor(rect.width));
+                    const height = Math.max(1, Math.floor(rect.height));
                     if (canvas.width !== width || canvas.height !== height) {
                         canvas.width = width;
                         canvas.height = height;
-                        gl.viewport(0, 0, width, height);
+                        // size change: old pixels invalid; clear
+                        ctx.fillStyle = "black";
+                        ctx.fillRect(0, 0, width, height);
+                        // force a fresh full depth render again
+                        firstRenderDone = false;
+                        resetRender(true);
                     }
                 }
 
-                function render() {
-                    resize();
-                    const ratio = canvas.width / canvas.height;
+                function maxIterForScale() {
+                    // more zoom → more iterations
+                    const s = scale;
+                    const base = BASE_MAX_ITER;
+                    const factor = 1 + Math.log10(1 / s + 1);
+                    return Math.floor(base * factor);
+                }
 
-                    gl.useProgram(program);
-                    gl.uniform2f(uCenterLoc, centerX, centerY);
-                    gl.uniform1f(uScaleLoc, scale);
-                    gl.uniform1i(uMaxIterLoc, maxIter);
-                    gl.uniform1f(uRatioLoc, ratio);
+                function updateInfo(textExtra = "") {
+                    if (!infoEl) return;
+                    const txt =
+                        `center=(${centerX.toFixed(6)}, ${centerY.toFixed(6)}) ` +
+                        `scale=${scale.toExponential(3)} ` +
+                        `maxIter=${maxIterForScale()}` +
+                        (textExtra ? " — " + textExtra : "");
+                    infoEl.textContent = txt;
+                }
 
-                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                function pixelToComplex(px, py) {
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    const aspect = w / h;
 
-                    if (infoEl) {
-                        infoEl.textContent =
-                            `center=(${centerX.toFixed(8)}, ${centerY.toFixed(
-                                8,
-                            )}) ` +
-                            `scale=${scale.toExponential(2)} ` +
-                            `maxIter=${maxIter}`;
+                    const nx = (px / w) * 2 - 1; // [-1,1]
+                    const ny = 1 - (py / h) * 2; // [1,-1]
+
+                    const x = nx * aspect * scale + centerX;
+                    const y = ny * scale + centerY;
+                    return { x, y };
+                }
+
+                // useCoarse:
+                //   true  -> start at START_STEP (first full render)
+                //   false -> start at 1px tiles, never regress to coarse
+                function resetRender(useCoarse) {
+                    renderId++;
+                    currentStep = useCoarse ? START_STEP : 1;
+                    tileX = 0;
+                    tileY = 0;
+                    updateInfo("rendering...");
+                    requestAnimationFrame(() => renderLoop(renderId));
+                }
+
+                // --------- rendering ---------
+                function renderLoop(id) {
+                    if (id !== renderId) return; // outdated render
+
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    const aspect = w / h;
+                    const escapeRadiusSq = 4.0;
+                    const maxIter = maxIterForScale();
+
+                    const TILES_PER_FRAME = 800; // adjust if needed
+                    let tilesDone = 0;
+
+                    while (tilesDone < TILES_PER_FRAME && currentStep >= 1) {
+                        if (tileY >= h) {
+                            // finished this step, go finer
+                            if (currentStep === 1) {
+                                // nothing finer than 1px
+                                break;
+                            }
+                            currentStep = Math.floor(currentStep / 2);
+                            if (currentStep < 1) break;
+                            tileX = 0;
+                            tileY = 0;
+                            continue;
+                        }
+
+                        const step = currentStep;
+                        const x = tileX;
+                        const y = tileY;
+
+                        // complex coord at center of tile
+                        const cx = x + step * 0.5;
+                        const cy = y + step * 0.5;
+                        const nx = (cx / w) * 2 - 1;
+                        const ny = 1 - (cy / h) * 2;
+
+                        const x0 = nx * aspect * scale + centerX;
+                        const y0 = ny * scale + centerY;
+
+                        let zx = 0;
+                        let zy = 0;
+                        let iter = 0;
+                        for (; iter < maxIter; iter++) {
+                            const zx2 = zx * zx - zy * zy + x0;
+                            const zy2 = 2 * zx * zy + y0;
+                            zx = zx2;
+                            zy = zy2;
+                            if (zx * zx + zy * zy > escapeRadiusSq) break;
+                        }
+
+                        let gray;
+                        if (iter === maxIter) {
+                            gray = 0; // inside set: black
+                        } else {
+                            const t = iter / maxIter;
+                            gray = Math.floor(255 * Math.sqrt(t)); // brighter on early escape
+                        }
+
+                        ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
+                        ctx.fillRect(x, y, step, step);
+
+                        // advance tile
+                        tileX += step;
+                        if (tileX >= w) {
+                            tileX = 0;
+                            tileY += step;
+                        }
+
+                        tilesDone++;
+                    }
+
+                    if (currentStep >= 1 && tileY < h) {
+                        requestAnimationFrame(() => renderLoop(id));
+                    } else if (currentStep > 1) {
+                        // still have finer steps to do
+                        requestAnimationFrame(() => renderLoop(id));
+                    } else {
+                        updateInfo("done");
+                        firstRenderDone = true;
                     }
                 }
 
-                // Map client (DOM) coords -> complex plane, consistent with shader
-                function clientToComplex(clientX, clientY) {
-                    const rect = canvas.getBoundingClientRect();
-                    const aspect = rect.width / rect.height;
+                // --------- zooming ---------
+                const ZOOM_SPEED = 0.0025;
 
-                    const nx = ((clientX - rect.left) / rect.width) * 2.0 - 1.0;
-                    // flip Y: DOM down = positive; NDC up = positive
-                    const ny = 1.0 - ((clientY - rect.top) / rect.height) * 2.0;
-
-                    const worldX = nx * aspect * scale + centerX;
-                    const worldY = ny * scale + centerY;
-                    return { worldX, worldY };
-                }
-
-                // Zoom around a given clientX/clientY
                 function zoomAt(clientX, clientY, zoomFactor) {
-                    const before = clientToComplex(clientX, clientY);
+                    const rect = canvas.getBoundingClientRect();
+                    const px = clientX - rect.left;
+                    const py = clientY - rect.top;
+
+                    // world coord before zoom
+                    const before = pixelToComplex(px, py);
+
                     scale *= zoomFactor;
 
-                    // mild iteration adjustment with zoom
-                    if (zoomFactor < 1.0) {
-                        maxIter = Math.min(5000, Math.floor(maxIter * 1.05));
-                    } else {
-                        maxIter = Math.max(50, Math.floor(maxIter / 1.02));
-                    }
+                    // world coord after zoom
+                    const after = pixelToComplex(px, py);
 
-                    const after = clientToComplex(clientX, clientY);
+                    // adjust center to keep point under cursor fixed
+                    centerX += before.x - after.x;
+                    centerY += before.y - after.y;
 
-                    centerX += before.worldX - after.worldX;
-                    centerY += before.worldY - after.worldY;
-
-                    render();
+                    // after first render, never drop back to coarse again
+                    resetRender(firstRenderDone ? false : true);
                 }
-
-                // === Wheel zoom (cursor-relative, scroll up = zoom in) ===
-
-                const ZOOM_SPEED = 0.003;
 
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
-                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED); // >1 down (out), <1 up (in)
+                        // scroll down (deltaY>0) -> zoom OUT (factor>1)
+                        // scroll up   (deltaY<0) -> zoom IN  (factor<1)
+                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED);
                         zoomAt(e.clientX, e.clientY, zoomFactor);
                     },
                     { passive: false },
                 );
 
-                // === Mouse pan ===
-
+                // --------- panning (mouse) ---------
                 canvas.addEventListener("mousedown", (e) => {
                     isDragging = true;
+                    canvas.classList.add("dragging");
                     lastX = e.clientX;
                     lastY = e.clientY;
                 });
@@ -302,29 +278,38 @@ const title = "Mandelbrot Explorer";
                 window.addEventListener("mousemove", (e) => {
                     if (!isDragging) return;
                     const rect = canvas.getBoundingClientRect();
-                    const aspect = rect.width / rect.height;
+                    const w = rect.width;
+                    const h = rect.height;
+                    const aspect = w / h;
 
                     const dx = e.clientX - lastX;
                     const dy = e.clientY - lastY;
                     lastX = e.clientX;
                     lastY = e.clientY;
 
-                    const ndx = (dx / rect.width) * 2.0;
-                    const ndy = -(dy / rect.height) * 2.0; // flip sign to match NDC y
+                    const ndx = (dx / w) * 2;
+                    const ndy = (dy / h) * 2;
 
+                    // move center opposite of drag direction
                     centerX -= ndx * scale * aspect;
-                    centerY -= ndy * scale;
+                    centerY += ndy * scale;
 
-                    render();
+                    resetRender(firstRenderDone ? false : true);
                 });
 
                 window.addEventListener("mouseup", () => {
                     isDragging = false;
+                    canvas.classList.remove("dragging");
                 });
 
-                // === Touch: pan and pinch zoom ===
+                // --------- basic touch support (1-finger pan, 2-finger pinch) ---------
+                let touchDragging = false;
+                let touchLastX = 0;
+                let touchLastY = 0;
+                let pinchActive = false;
+                let lastPinchDist = 0;
 
-                function distance(t1, t2) {
+                function touchDistance(t1, t2) {
                     const dx = t2.clientX - t1.clientX;
                     const dy = t2.clientY - t1.clientY;
                     return Math.hypot(dx, dy);
@@ -335,17 +320,18 @@ const title = "Mandelbrot Explorer";
                     (e) => {
                         e.preventDefault();
                         if (e.touches.length === 1) {
-                            isDragging = true;
-                            isPinching = false;
+                            touchDragging = true;
+                            pinchActive = false;
                             const t = e.touches[0];
-                            lastX = t.clientX;
-                            lastY = t.clientY;
+                            touchLastX = t.clientX;
+                            touchLastY = t.clientY;
                         } else if (e.touches.length === 2) {
-                            isDragging = false;
-                            isPinching = true;
-                            const t1 = e.touches[0];
-                            const t2 = e.touches[1];
-                            lastPinchDist = distance(t1, t2);
+                            touchDragging = false;
+                            pinchActive = true;
+                            lastPinchDist = touchDistance(
+                                e.touches[0],
+                                e.touches[1],
+                            );
                         }
                     },
                     { passive: false },
@@ -355,53 +341,36 @@ const title = "Mandelbrot Explorer";
                     "touchmove",
                     (e) => {
                         e.preventDefault();
-
-                        if (
-                            e.touches.length === 1 &&
-                            isDragging &&
-                            !isPinching
-                        ) {
-                            const rect = canvas.getBoundingClientRect();
-                            const aspect = rect.width / rect.height;
-
-                            const t = e.touches[0];
-                            const dx = t.clientX - lastX;
-                            const dy = t.clientY - lastY;
-                            lastX = t.clientX;
-                            lastY = t.clientY;
-
-                            const ndx = (dx / rect.width) * 2.0;
-                            const ndy = -(dy / rect.height) * 2.0;
-
-                            centerX -= ndx * scale * aspect;
-                            centerY -= ndy * scale;
-
-                            render();
-                        } else if (e.touches.length === 2) {
+                        if (pinchActive && e.touches.length === 2) {
                             const t1 = e.touches[0];
                             const t2 = e.touches[1];
-                            const newDist = distance(t1, t2);
-
-                            if (!isPinching) {
-                                isPinching = true;
-                                lastPinchDist = newDist;
-                                return;
+                            const d = touchDistance(t1, t2);
+                            if (d > 0 && lastPinchDist > 0) {
+                                const zoomFactor = lastPinchDist / d;
+                                const cx = (t1.clientX + t2.clientX) * 0.5;
+                                const cy = (t1.clientY + t2.clientY) * 0.5;
+                                zoomAt(cx, cy, zoomFactor);
                             }
+                            lastPinchDist = d;
+                        } else if (touchDragging && e.touches.length === 1) {
+                            const t = e.touches[0];
+                            const rect = canvas.getBoundingClientRect();
+                            const w = rect.width;
+                            const h = rect.height;
+                            const aspect = w / h;
 
-                            if (newDist > 0 && lastPinchDist > 0) {
-                                const zoomFactor = lastPinchDist / newDist; // >1 fingers apart (out), <1 together (in)
-                                const centerClientX =
-                                    (t1.clientX + t2.clientX) * 0.5;
-                                const centerClientY =
-                                    (t1.clientY + t2.clientY) * 0.5;
-                                zoomAt(
-                                    centerClientX,
-                                    centerClientY,
-                                    zoomFactor,
-                                );
-                            }
+                            const dx = t.clientX - touchLastX;
+                            const dy = t.clientY - touchLastY;
+                            touchLastX = t.clientX;
+                            touchLastY = t.clientY;
 
-                            lastPinchDist = newDist;
+                            const ndx = (dx / w) * 2;
+                            const ndy = (dy / h) * 2;
+
+                            centerX -= ndx * scale * aspect;
+                            centerY += ndy * scale;
+
+                            resetRender(firstRenderDone ? false : true);
                         }
                     },
                     { passive: false },
@@ -412,24 +381,27 @@ const title = "Mandelbrot Explorer";
                     (e) => {
                         e.preventDefault();
                         if (e.touches.length === 0) {
-                            isDragging = false;
-                            isPinching = false;
+                            touchDragging = false;
+                            pinchActive = false;
                         } else if (e.touches.length === 1) {
-                            isPinching = false;
+                            pinchActive = false;
                             const t = e.touches[0];
-                            lastX = t.clientX;
-                            lastY = t.clientY;
+                            touchLastX = t.clientX;
+                            touchLastY = t.clientY;
+                            touchDragging = true;
                         }
                     },
                     { passive: false },
                 );
 
+                // --------- init ---------
                 window.addEventListener("resize", () => {
-                    render();
+                    resizeCanvas();
                 });
 
-                // initial draw
-                render();
+                resizeCanvas();
+                // first render: full depth (coarse->fine)
+                resetRender(true);
             });
         </script>
     </body>
