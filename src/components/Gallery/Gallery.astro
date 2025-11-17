@@ -14,11 +14,35 @@ const {
 } = Astro.props;
 ---
 
+<div class="windowWidth">
+    <div
+        id="gallery"
+        data-max={maxSize}
+        data-delay={delayMs}
+        data-rot={rotationRange}
+    >
+        {
+            images.map((u) => (
+                <img
+                    class="photo"
+                    src={u.src}
+                    alt="some image"
+                    loading="eager"
+                    decoding="async"
+                />
+            ))
+        }
+    </div>
+</div>
+
 <style>
     .windowWidth {
         position: relative;
         width: 100vw;
         margin-left: calc(50% - 50vw);
+        overflow: hidden;
+        padding-top: 1000px;
+        margin-top: -1000px;
     }
 
     #gallery {
@@ -49,31 +73,8 @@ const {
             height 2s ease,
             left 0.5s ease,
             top 0.5s ease;
-
-        overflow: hidden;
     }
 </style>
-
-<div class="windowWidth">
-    <div
-        id="gallery"
-        data-max={maxSize}
-        data-delay={delayMs}
-        data-rot={rotationRange}
-    >
-        {
-            images.map((u) => (
-                <img
-                    class="photo"
-                    src={u.src}
-                    alt="some image"
-                    loading="eager"
-                    decoding="async"
-                />
-            ))
-        }
-    </div>
-</div>
 
 <script is:inline>
     const container = document.getElementById("gallery");
