@@ -1,464 +1,552 @@
----
-const title = "Mandelbrot Explorer";
----
-
+<!doctype html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
-        <title>{title}</title>
+        <meta charset="UTF-8" />
+        <title>Mandelbrot Viewer (Progressive, Static After Render)</title>
         <style>
             html,
             body {
                 margin: 0;
                 padding: 0;
-                height: 100%;
                 width: 100%;
+                height: 100%;
                 background: #000;
-                color: #fff;
-                font-family: system-ui, sans-serif;
+                color: #eee;
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    sans-serif;
+                overflow: hidden;
             }
-            body {
-                margin: 0;
-                padding: 0;
-            }
+
             #wrapper {
                 position: fixed;
                 inset: 0;
                 overflow: hidden;
+                background: #000;
             }
-            #mandel {
+
+            canvas {
+                display: block;
                 width: 100%;
                 height: 100%;
-                display: block;
                 touch-action: none;
                 cursor: grab;
             }
-            #mandel.dragging {
+
+            canvas:active {
                 cursor: grabbing;
             }
-            #info {
-                position: absolute;
-                left: 0.5rem;
-                bottom: 0.5rem;
-                padding: 0.25rem 0.5rem;
-                font-size: 0.7rem;
-                background: rgba(0, 0, 0, 0.5);
-                border-radius: 4px;
-                pointer-events: none;
+
+            #controls {
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                padding: 8px 10px;
+                background: rgba(0, 0, 0, 0.8);
+                border-radius: 6px;
+                font-size: 12px;
+                line-height: 1.4;
+                z-index: 10;
+                user-select: none;
+            }
+
+            #controls label {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-bottom: 4px;
+            }
+
+            #controls input[type="color"] {
+                width: 20px;
+                height: 20px;
+                padding: 0;
+                border: none;
+                background: transparent;
+            }
+
+            #status {
+                margin-top: 4px;
                 opacity: 0.7;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+                    Consolas, "Liberation Mono", "Courier New", monospace;
             }
         </style>
     </head>
     <body>
         <div id="wrapper">
-            <canvas id="mandel"></canvas>
-            <div id="info"></div>
+            <canvas id="view"></canvas>
+        </div>
+
+        <div id="controls">
+            <div><strong>Palette</strong></div>
+            <label>
+                Inside
+                <input type="color" id="insideColor" value="#000000" />
+            </label>
+            <label>
+                Outside A
+                <input type="color" id="outside1Color" value="#003366" />
+            </label>
+            <label>
+                Outside B
+                <input type="color" id="outside2Color" value="#ffaa33" />
+            </label>
+            <div id="status">Initializing…</div>
         </div>
 
         <script>
-            window.addEventListener("load", () => {
-                const canvas = document.getElementById("mandel");
-                const infoEl = document.getElementById("info");
+            (function () {
+                const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
+                const dpr = window.devicePixelRatio || 1;
 
-                if (!ctx) {
-                    if (infoEl) infoEl.textContent = "2D canvas not supported";
-                    return;
+                const insideInput = document.getElementById("insideColor");
+                const outside1Input = document.getElementById("outside1Color");
+                const outside2Input = document.getElementById("outside2Color");
+                const statusEl = document.getElementById("status");
+
+                // Base offscreen canvas where the fractal lives at screen resolution
+                const dataCanvas = document.createElement("canvas");
+                const dataCtx = dataCanvas.getContext("2d");
+
+                // View transform (applied to main canvas when drawing dataCanvas)
+                let viewScale = 1;
+                let viewOffsetX = 0;
+                let viewOffsetY = 0;
+
+                // Rendering state
+                let width = 0;
+                let height = 0;
+                let maxIter = 500;
+                let rendering = false;
+                let cancelRender = false;
+                let finalIterations = null; // Float32Array of averaged escape values after supersampling
+                let finalReady = false;
+
+                // Pointer state for panning
+                let isPanning = false;
+                let panStartX = 0;
+                let panStartY = 0;
+                let panOrigOffsetX = 0;
+                let panOrigOffsetY = 0;
+
+                function resize() {
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    width = Math.floor(w * dpr);
+                    height = Math.floor(h * dpr);
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.style.width = w + "px";
+                    canvas.style.height = h + "px";
+
+                    dataCanvas.width = width;
+                    dataCanvas.height = height;
+
+                    viewScale = 1;
+                    viewOffsetX = 0;
+                    viewOffsetY = 0;
                 }
 
-                // --------- view state ---------
-                let centerX = -0.5;
-                let centerY = 0.0;
-                let scale = 1.5; // half-height in complex plane
-
-                const BASE_MAX_ITER = 250;
-
-                // rendering state
-                const START_STEP = 32; // block size in pixels (start coarse)
-                let currentStep = START_STEP;
-                let tileX = 0;
-                let tileY = 0;
-                let renderId = 0; // used to cancel outdated renders
-
-                // interaction state
-                let isDragging = false;
-                let lastX = 0;
-                let lastY = 0;
-
-                // last finished image (for preview warping)
-                let lastImage = null;
-                let lastView = {
-                    centerX: centerX,
-                    centerY: centerY,
-                    scale: scale,
-                };
-
-                // --------- helpers ---------
-                function resizeCanvas() {
-                    const rect = canvas.getBoundingClientRect();
-                    const width = Math.max(1, Math.floor(rect.width));
-                    const height = Math.max(1, Math.floor(rect.height));
-                    if (canvas.width !== width || canvas.height !== height) {
-                        canvas.width = width;
-                        canvas.height = height;
-                        // stretch old image as best-effort preview
-                        drawPreviewFromLastImage();
-                        resetRender({ clear: true });
+                function hexToRgb(hex) {
+                    let h = hex.replace("#", "");
+                    if (h.length === 3) {
+                        h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
                     }
+                    const num = parseInt(h, 16);
+                    return {
+                        r: (num >> 16) & 255,
+                        g: (num >> 8) & 255,
+                        b: num & 255,
+                    };
                 }
 
-                function maxIterForScale() {
-                    const s = scale;
-                    const base = BASE_MAX_ITER;
-                    const factor = 1 + Math.log10(1 / s + 1);
-                    return Math.floor(base * factor);
+                function lerp(a, b, t) {
+                    return a + (b - a) * t;
                 }
 
-                function updateInfo(textExtra = "") {
-                    if (!infoEl) return;
-                    const txt =
-                        `center=(${centerX.toFixed(6)}, ${centerY.toFixed(6)}) ` +
-                        `scale=${scale.toExponential(3)} ` +
-                        `maxIter=${maxIterForScale()}` +
-                        (textExtra ? " — " + textExtra : "");
-                    infoEl.textContent = txt;
-                }
-
-                function pixelToComplex(px, py) {
-                    const w = canvas.width;
-                    const h = canvas.height;
-                    const aspect = w / h;
-
-                    const nx = (px / w) * 2 - 1; // [-1,1]
-                    const ny = 1 - (py / h) * 2; // [1,-1]
-
-                    const x = nx * aspect * scale + centerX;
-                    const y = ny * scale + centerY;
-                    return { x, y };
-                }
-
-                function saveLastViewImage() {
-                    if (!lastImage) {
-                        lastImage = document.createElement("canvas");
-                    }
-                    lastImage.width = canvas.width;
-                    lastImage.height = canvas.height;
-                    const lic = lastImage.getContext("2d");
-                    lic.drawImage(canvas, 0, 0);
-                    lastView.centerX = centerX;
-                    lastView.centerY = centerY;
-                    lastView.scale = scale;
-                }
-
-                function drawPreviewFromLastImage() {
-                    if (!lastImage) return;
-                    const width = canvas.width;
-                    const height = canvas.height;
-                    if (width === 0 || height === 0) return;
-
-                    const aspect = width / height;
-
-                    const fCenterX = lastView.centerX;
-                    const fCenterY = lastView.centerY;
-                    const fScale = lastView.scale;
-
-                    // scale ratio old→new
-                    const A = fScale / scale;
-
-                    // solve for translation that maps old view to new view in screen space
-                    const Bx =
-                        (fCenterX * width -
-                            centerX * width -
-                            fScale * aspect * width +
-                            scale * aspect * width) /
-                        (2 * scale * aspect);
-
-                    const By =
-                        (-fCenterY * height +
-                            centerY * height -
-                            fScale * height +
-                            scale * height) /
-                        (2 * scale);
-
-                    ctx.setTransform(A, 0, 0, A, Bx, By);
-                    ctx.clearRect(0, 0, width, height);
-                    ctx.drawImage(
-                        lastImage,
-                        0,
-                        0,
-                        lastImage.width,
-                        lastImage.height,
-                    );
+                function present() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.setTransform(
+                        viewScale,
+                        0,
+                        0,
+                        viewScale,
+                        viewOffsetX,
+                        viewOffsetY,
+                    );
+                    ctx.drawImage(dataCanvas, 0, 0);
                 }
 
-                function resetRender(options = {}) {
-                    const { clear = false } = options;
-                    renderId++;
-                    currentStep = START_STEP;
-                    tileX = 0;
-                    tileY = 0;
-                    if (clear) {
-                        ctx.fillStyle = "black";
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                function setStatus(text) {
+                    statusEl.textContent = text;
+                }
+
+                // Compute smooth iteration count for a single complex point
+                function mandelIterations(cx, cy, maxIterLocal) {
+                    let x = 0;
+                    let y = 0;
+                    let xx = 0;
+                    let yy = 0;
+                    let iter = 0;
+                    while (xx + yy <= 4 && iter < maxIterLocal) {
+                        y = 2 * x * y + cy;
+                        x = xx - yy + cx;
+                        xx = x * x;
+                        yy = y * y;
+                        iter++;
                     }
-                    updateInfo("rendering...");
-                    requestAnimationFrame(() => renderLoop(renderId));
+                    if (iter >= maxIterLocal) {
+                        return maxIterLocal;
+                    }
+                    // Smooth coloring
+                    const mag = Math.sqrt(xx + yy);
+                    const mu = iter + 1 - Math.log(Math.log(mag)) / Math.log(2);
+                    return mu;
                 }
 
-                // --------- rendering ---------
-                function renderLoop(id) {
-                    if (id !== renderId) return; // outdated render
-
-                    const w = canvas.width;
-                    const h = canvas.height;
+                // Map pixel coordinates to Mandelbrot plane
+                function pixelToComplex(px, py, w, h) {
+                    // Classic view roughly centered at (-0.5, 0)
                     const aspect = w / h;
-                    const escapeRadiusSq = 4.0;
-                    const maxIter = maxIterForScale();
+                    const scale = 3.0; // width in complex plane
+                    const x0 = -0.5 - scale / 2;
+                    const y0 = -scale / (2 * aspect);
+                    const cx = x0 + (px / w) * scale;
+                    const cy = y0 + ((py / h) * scale) / aspect;
+                    return [cx, cy];
+                }
 
-                    const TILES_PER_FRAME = 800; // adjust if needed
-                    let tilesDone = 0;
+                async function renderProgressive() {
+                    rendering = true;
+                    cancelRender = false;
+                    finalReady = false;
+                    finalIterations = null;
 
-                    while (tilesDone < TILES_PER_FRAME && currentStep >= 1) {
-                        if (tileY >= h) {
-                            // finished this step, go finer
-                            currentStep = Math.floor(currentStep / 2);
-                            if (currentStep < 1) break;
-                            tileX = 0;
-                            tileY = 0;
-                            continue;
+                    const passes = [
+                        { step: 8, label: "Pass 1/4 (coarse)" },
+                        { step: 4, label: "Pass 2/4 (medium)" },
+                        { step: 1, label: "Pass 3/4 (full res)" },
+                    ];
+
+                    // Progressive passes on base resolution canvas
+                    const baseImage = dataCtx.getImageData(0, 0, width, height);
+                    const baseData = baseImage.data;
+
+                    const inside = hexToRgb(insideInput.value);
+                    const out1 = hexToRgb(outside1Input.value);
+                    const out2 = hexToRgb(outside2Input.value);
+
+                    for (let p = 0; p < passes.length; p++) {
+                        const { step, label } = passes[p];
+                        if (cancelRender) {
+                            rendering = false;
+                            setStatus("Render cancelled");
+                            present();
+                            return;
+                        }
+                        setStatus(label);
+
+                        for (let py = 0; py < height; py += step) {
+                            for (let px = 0; px < width; px += step) {
+                                const [cx, cy] = pixelToComplex(
+                                    px + step * 0.5,
+                                    py + step * 0.5,
+                                    width,
+                                    height,
+                                );
+                                const t = mandelIterations(cx, cy, maxIter);
+                                let r, g, b;
+
+                                if (t >= maxIter) {
+                                    r = inside.r;
+                                    g = inside.g;
+                                    b = inside.b;
+                                } else {
+                                    const norm = t / maxIter;
+                                    const mix = norm;
+                                    const r1 = lerp(out1.r, out2.r, mix);
+                                    const g1 = lerp(out1.g, out2.g, mix);
+                                    const b1 = lerp(out1.b, out2.b, mix);
+                                    r = r1;
+                                    g = g1;
+                                    b = b1;
+                                }
+
+                                for (let sy = 0; sy < step; sy++) {
+                                    const yy = py + sy;
+                                    if (yy >= height) break;
+                                    for (let sx = 0; sx < step; sx++) {
+                                        const xx = px + sx;
+                                        if (xx >= width) break;
+                                        const idx = 4 * (yy * width + xx);
+                                        baseData[idx] = r;
+                                        baseData[idx + 1] = g;
+                                        baseData[idx + 2] = b;
+                                        baseData[idx + 3] = 255;
+                                    }
+                                }
+                            }
+
+                            if (cancelRender) break;
+                            if ((py & 7) === 0) {
+                                dataCtx.putImageData(baseImage, 0, 0);
+                                present();
+                                await new Promise(requestAnimationFrame);
+                            }
                         }
 
-                        const step = currentStep;
-                        const x = tileX;
-                        const y = tileY;
-
-                        // complex coord at center of tile
-                        const cx = x + step * 0.5;
-                        const cy = y + step * 0.5;
-                        const nx = (cx / w) * 2 - 1;
-                        const ny = 1 - (cy / h) * 2;
-
-                        const x0 = nx * aspect * scale + centerX;
-                        const y0 = ny * scale + centerY;
-
-                        let zx = 0;
-                        let zy = 0;
-                        let iter = 0;
-                        for (; iter < maxIter; iter++) {
-                            const zx2 = zx * zx - zy * zy + x0;
-                            const zy2 = 2 * zx * zy + y0;
-                            zx = zx2;
-                            zy = zy2;
-                            if (zx * zx + zy * zy > escapeRadiusSq) break;
+                        if (cancelRender) {
+                            rendering = false;
+                            dataCtx.putImageData(baseImage, 0, 0);
+                            present();
+                            setStatus("Render cancelled");
+                            return;
                         }
-
-                        let gray;
-                        if (iter === maxIter) {
-                            gray = 0; // inside set: black
-                        } else {
-                            const t = iter / maxIter;
-                            gray = Math.floor(255 * Math.sqrt(t)); // brighter near early escape
-                        }
-
-                        ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
-                        ctx.fillRect(x, y, step, step);
-
-                        // advance tile
-                        tileX += step;
-                        if (tileX >= w) {
-                            tileX = 0;
-                            tileY += step;
-                        }
-
-                        tilesDone++;
                     }
 
-                    if (currentStep >= 1) {
-                        requestAnimationFrame(() => renderLoop(id));
-                    } else {
-                        updateInfo("done");
-                        saveLastViewImage();
+                    dataCtx.putImageData(baseImage, 0, 0);
+                    present();
+
+                    // Final supersampling pass: 2x width and 2x height (4x pixels)
+                    await supersamplePass();
+                }
+
+                async function supersamplePass() {
+                    if (cancelRender) {
+                        rendering = false;
+                        setStatus("Render cancelled");
+                        present();
+                        return;
+                    }
+
+                    setStatus("Pass 4/4 (supersampling)");
+
+                    const hiW = width * 2;
+                    const hiH = height * 2;
+
+                    const hiIterations = new Float32Array(hiW * hiH);
+
+                    // Compute hi-res iterations (no color yet)
+                    for (let py = 0; py < hiH; py++) {
+                        for (let px = 0; px < hiW; px++) {
+                            const [cx, cy] = pixelToComplex(
+                                px + 0.5,
+                                py + 0.5,
+                                hiW,
+                                hiH,
+                            );
+                            const t = mandelIterations(cx, cy, maxIter);
+                            hiIterations[py * hiW + px] = t;
+                        }
+
+                        if (cancelRender) {
+                            rendering = false;
+                            setStatus("Render cancelled");
+                            present();
+                            return;
+                        }
+
+                        if ((py & 15) === 0) {
+                            await new Promise(requestAnimationFrame);
+                        }
+                    }
+
+                    // Downsample: average 2×2 hi-res block into one screen pixel
+                    finalIterations = new Float32Array(width * height);
+                    const img = dataCtx.createImageData(width, height);
+                    const data = img.data;
+
+                    const inside = hexToRgb(insideInput.value);
+                    const out1 = hexToRgb(outside1Input.value);
+                    const out2 = hexToRgb(outside2Input.value);
+
+                    for (let py = 0; py < height; py++) {
+                        const hy0 = 2 * py;
+                        const hy1 = hy0 + 1;
+                        for (let px = 0; px < width; px++) {
+                            const hx0 = 2 * px;
+                            const hx1 = hx0 + 1;
+
+                            const idx00 = hy0 * hiW + hx0;
+                            const idx10 = hy0 * hiW + hx1;
+                            const idx01 = hy1 * hiW + hx0;
+                            const idx11 = hy1 * hiW + hx1;
+
+                            const t00 = hiIterations[idx00];
+                            const t10 = hiIterations[idx10];
+                            const t01 = hiIterations[idx01];
+                            const t11 = hiIterations[idx11];
+
+                            const avgT = 0.25 * (t00 + t10 + t01 + t11);
+                            finalIterations[py * width + px] = avgT;
+
+                            let r, g, b;
+                            if (avgT >= maxIter) {
+                                r = inside.r;
+                                g = inside.g;
+                                b = inside.b;
+                            } else {
+                                const norm = avgT / maxIter;
+                                const mix = norm;
+                                const r1 = lerp(out1.r, out2.r, mix);
+                                const g1 = lerp(out1.g, out2.g, mix);
+                                const b1 = lerp(out1.b, out2.b, mix);
+                                r = r1;
+                                g = g1;
+                                b = b1;
+                            }
+
+                            const idx = 4 * (py * width + px);
+                            data[idx] = r;
+                            data[idx + 1] = g;
+                            data[idx + 2] = b;
+                            data[idx + 3] = 255;
+                        }
+
+                        if ((py & 15) === 0) {
+                            await new Promise(requestAnimationFrame);
+                        }
+                    }
+
+                    dataCtx.putImageData(img, 0, 0);
+                    present();
+
+                    rendering = false;
+                    finalReady = true;
+                    setStatus("Done (static bitmap; pan/zoom is cheap)");
+                }
+
+                // Recolor final image without recomputing Mandelbrot (uses finalIterations)
+                function recolorFinal() {
+                    if (!finalReady || !finalIterations) return;
+
+                    const img = dataCtx.createImageData(width, height);
+                    const data = img.data;
+
+                    const inside = hexToRgb(insideInput.value);
+                    const out1 = hexToRgb(outside1Input.value);
+                    const out2 = hexToRgb(outside2Input.value);
+
+                    for (let py = 0; py < height; py++) {
+                        for (let px = 0; px < width; px++) {
+                            const t = finalIterations[py * width + px];
+                            let r, g, b;
+
+                            if (t >= maxIter) {
+                                r = inside.r;
+                                g = inside.g;
+                                b = inside.b;
+                            } else {
+                                const norm = t / maxIter;
+                                const mix = norm;
+                                const r1 = lerp(out1.r, out2.r, mix);
+                                const g1 = lerp(out1.g, out2.g, mix);
+                                const b1 = lerp(out1.b, out2.b, mix);
+                                r = r1;
+                                g = g1;
+                                b = b1;
+                            }
+
+                            const idx = 4 * (py * width + px);
+                            data[idx] = r;
+                            data[idx + 1] = g;
+                            data[idx + 2] = b;
+                            data[idx + 3] = 255;
+                        }
+                    }
+
+                    dataCtx.putImageData(img, 0, 0);
+                    present();
+                }
+
+                // Cancel any running render when user starts interacting
+                function killRenderIfAny() {
+                    if (rendering) {
+                        cancelRender = true;
                     }
                 }
 
-                // --------- zooming ---------
-                const ZOOM_SPEED = 0.0025;
+                // Pan/zoom handlers
+                canvas.addEventListener("pointerdown", (e) => {
+                    killRenderIfAny();
+                    isPanning = true;
+                    canvas.setPointerCapture(e.pointerId);
+                    panStartX = e.clientX;
+                    panStartY = e.clientY;
+                    panOrigOffsetX = viewOffsetX;
+                    panOrigOffsetY = viewOffsetY;
+                });
 
-                function zoomAt(clientX, clientY, zoomFactor) {
-                    const rect = canvas.getBoundingClientRect();
-                    const px = clientX - rect.left;
-                    const py = clientY - rect.top;
+                canvas.addEventListener("pointermove", (e) => {
+                    if (!isPanning) return;
+                    const dx = (e.clientX - panStartX) * dpr;
+                    const dy = (e.clientY - panStartY) * dpr;
+                    viewOffsetX = panOrigOffsetX + dx;
+                    viewOffsetY = panOrigOffsetY + dy;
+                    present();
+                });
 
-                    // world coord before zoom
-                    const before = pixelToComplex(px, py);
+                canvas.addEventListener("pointerup", (e) => {
+                    if (!isPanning) return;
+                    isPanning = false;
+                    canvas.releasePointerCapture(e.pointerId);
+                });
 
-                    scale *= zoomFactor;
-
-                    // world coord after zoom
-                    const after = pixelToComplex(px, py);
-
-                    // adjust center to keep point under cursor fixed
-                    centerX += before.x - after.x;
-                    centerY += before.y - after.y;
-
-                    // warp old image as preview, then refine
-                    drawPreviewFromLastImage();
-                    resetRender({ clear: false });
-                }
+                canvas.addEventListener("pointercancel", (e) => {
+                    if (!isPanning) return;
+                    isPanning = false;
+                    canvas.releasePointerCapture(e.pointerId);
+                });
 
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
-                        // restore original direction: deltaY > 0 → zoom OUT, < 0 → zoom IN
-                        const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED);
-                        zoomAt(e.clientX, e.clientY, zoomFactor);
+                        killRenderIfAny();
+
+                        const rect = canvas.getBoundingClientRect();
+                        const cx = (e.clientX - rect.left) * dpr;
+                        const cy = (e.clientY - rect.top) * dpr;
+
+                        const delta = -e.deltaY;
+                        const zoomFactor = Math.exp(delta * 0.001); // smooth-ish
+
+                        const newScale = viewScale * zoomFactor;
+
+                        // Zoom around cursor
+                        viewOffsetX = cx - zoomFactor * (cx - viewOffsetX);
+                        viewOffsetY = cy - zoomFactor * (cy - viewOffsetY);
+                        viewScale = newScale;
+
+                        present();
                     },
                     { passive: false },
                 );
 
-                // --------- panning (mouse) ---------
-                canvas.addEventListener("mousedown", (e) => {
-                    isDragging = true;
-                    canvas.classList.add("dragging");
-                    lastX = e.clientX;
-                    lastY = e.clientY;
+                insideInput.addEventListener("input", () => {
+                    if (finalReady) recolorFinal();
+                });
+                outside1Input.addEventListener("input", () => {
+                    if (finalReady) recolorFinal();
+                });
+                outside2Input.addEventListener("input", () => {
+                    if (finalReady) recolorFinal();
                 });
 
-                window.addEventListener("mousemove", (e) => {
-                    if (!isDragging) return;
-                    const rect = canvas.getBoundingClientRect();
-                    const w = rect.width;
-                    const h = rect.height;
-                    const aspect = w / h;
+                // Init
+                resize();
+                present();
+                setStatus("Rendering…");
+                renderProgressive();
 
-                    const dx = e.clientX - lastX;
-                    const dy = e.clientY - lastY;
-                    lastX = e.clientX;
-                    lastY = e.clientY;
-
-                    const ndx = (dx / w) * 2;
-                    const ndy = (dy / h) * 2;
-
-                    // move center opposite of drag direction
-                    centerX -= ndx * scale * aspect;
-                    centerY += ndy * scale;
-
-                    // warp old image as preview, then refine
-                    drawPreviewFromLastImage();
-                    resetRender({ clear: false });
-                });
-
-                window.addEventListener("mouseup", () => {
-                    isDragging = false;
-                    canvas.classList.remove("dragging");
-                });
-
-                // --------- basic touch support (1-finger pan, 2-finger pinch) ---------
-                let touchDragging = false;
-                let touchLastX = 0;
-                let touchLastY = 0;
-                let pinchActive = false;
-                let lastPinchDist = 0;
-
-                function touchDistance(t1, t2) {
-                    const dx = t2.clientX - t1.clientX;
-                    const dy = t2.clientY - t1.clientY;
-                    return Math.hypot(dx, dy);
-                }
-
-                canvas.addEventListener(
-                    "touchstart",
-                    (e) => {
-                        e.preventDefault();
-                        if (e.touches.length === 1) {
-                            touchDragging = true;
-                            pinchActive = false;
-                            const t = e.touches[0];
-                            touchLastX = t.clientX;
-                            touchLastY = t.clientY;
-                        } else if (e.touches.length === 2) {
-                            touchDragging = false;
-                            pinchActive = true;
-                            lastPinchDist = touchDistance(
-                                e.touches[0],
-                                e.touches[1],
-                            );
-                        }
-                    },
-                    { passive: false },
-                );
-
-                canvas.addEventListener(
-                    "touchmove",
-                    (e) => {
-                        e.preventDefault();
-                        if (pinchActive && e.touches.length === 2) {
-                            const t1 = e.touches[0];
-                            const t2 = e.touches[1];
-                            const d = touchDistance(t1, t2);
-                            if (d > 0 && lastPinchDist > 0) {
-                                const zoomFactor = lastPinchDist / d;
-                                const cx = (t1.clientX + t2.clientX) * 0.5;
-                                const cy = (t1.clientY + t2.clientY) * 0.5;
-                                zoomAt(cx, cy, zoomFactor);
-                            }
-                            lastPinchDist = d;
-                        } else if (touchDragging && e.touches.length === 1) {
-                            const t = e.touches[0];
-                            const rect = canvas.getBoundingClientRect();
-                            const w = rect.width;
-                            const h = rect.height;
-                            const aspect = w / h;
-
-                            const dx = t.clientX - touchLastX;
-                            const dy = t.clientY - touchLastY;
-                            touchLastX = t.clientX;
-                            touchLastY = t.clientY;
-
-                            const ndx = (dx / w) * 2;
-                            const ndy = (dy / h) * 2;
-
-                            centerX -= ndx * scale * aspect;
-                            centerY += ndy * scale;
-
-                            drawPreviewFromLastImage();
-                            resetRender({ clear: false });
-                        }
-                    },
-                    { passive: false },
-                );
-
-                canvas.addEventListener(
-                    "touchend",
-                    (e) => {
-                        e.preventDefault();
-                        if (e.touches.length === 0) {
-                            touchDragging = false;
-                            pinchActive = false;
-                        } else if (e.touches.length === 1) {
-                            pinchActive = false;
-                            const t = e.touches[0];
-                            touchLastX = t.clientX;
-                            touchLastY = t.clientY;
-                            touchDragging = true;
-                        }
-                    },
-                    { passive: false },
-                );
-
-                // --------- init ---------
-                window.addEventListener("resize", () => {
-                    resizeCanvas();
-                });
-
-                resizeCanvas();
-                // first render: no previous image, so clear
-                ctx.fillStyle = "black";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                resetRender({ clear: false });
-            });
+                // Optional: if you want, you could re-render on window resize.
+                // That is *not* required for your description, so omitted.
+            })();
         </script>
     </body>
 </html>
