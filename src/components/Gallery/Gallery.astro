@@ -9,7 +9,7 @@ interface Props {
 const {
     images = [],
     maxSize = 400,
-    delayMs = 50,
+    delayMs = 150,
     rotationRange = 30,
 } = Astro.props;
 ---
@@ -25,26 +25,30 @@ const {
         position: relative;
         margin: auto;
         width: 80%;
-
         margin-bottom: 20em;
     }
 
     .photo {
         position: absolute;
         display: block;
-        will-change: transform, left, top;
+        will-change: transform, left, top, opacity;
         transform-origin: 50% 50%;
         user-select: none;
 
         border-radius: 0.2em;
         box-shadow: 0 0 8px var(--color-shadow);
 
+        /* start invisible + slightly shifted */
+        opacity: 0;
+        transform: translateY(40px);
+
         transition:
+            opacity 0.6s ease,
+            transform 0.6s ease,
             width 2s ease,
             height 2s ease,
-            transform 2s ease,
-            left 2s ease,
-            top 1.9s ease;
+            left 0.5s ease,
+            top 0.5s ease;
     }
 </style>
 
@@ -78,6 +82,7 @@ const {
     const imgs = Array.from(container.querySelectorAll("img"));
     let placed = []; // [{x,y,w,h}]
     let lastW = 0;
+    let currentY = 0;
 
     /** ---------- sizing & metrics ---------- */
     function getUnitW() {
@@ -122,7 +127,7 @@ const {
         const h = Math.round(nh * scale);
 
         let rot = rand(-rotRange, rotRange);
-        if (rot == 0) {
+        if (rot === 0) {
             rot = 3;
         }
 
@@ -158,11 +163,17 @@ const {
         img.style.height = h + "px";
         img.style.left = Math.round(x) + "px";
         img.style.top = Math.round(y) + "px";
-        img.style.transform = `rotate(${rot}deg)`;
         img.addEventListener("click", scaleImg);
 
         placed.push({ x, y, w, h });
         updateContainerHeight(y + h);
+
+        // fly-in animation: from opacity 0 + translateY(40px) to
+        // opacity 1 + rotate(...)
+        requestAnimationFrame(() => {
+            img.style.opacity = "1";
+            img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+        });
 
         return y;
     }
@@ -176,9 +187,11 @@ const {
         for (const img of imgs) {
             img.style.width = "";
             img.style.height = "";
-            img.style.left = "-99999px";
-            img.style.top = "-99999px";
-            img.style.transform = "";
+            img.style.left = "80vw";
+
+            // reset animation state
+            img.style.opacity = "0";
+            img.style.transform = "translateY(40px)";
         }
 
         currentY = 0;
@@ -237,7 +250,7 @@ const {
             this.style.left = `calc(50% - ${w * 1.5}px)`;
 
             scaled = true;
-        } else if (this.style.transform == "rotate(0deg)") {
+        } else if (this.style.transform === "rotate(0deg)") {
             const h = parseInt(this.style.height, 10) || this.offsetHeight;
             const w = parseInt(this.style.width, 10) || this.offsetWidth;
 
@@ -252,7 +265,7 @@ const {
         }
     }
 
-    // initial run with delay
+    // initial run with delay (sequential fly-in)
     placeAll({ withDelay: true });
     window.addEventListener("resize", relayoutOnResize, { passive: true });
 </script>
