@@ -103,10 +103,22 @@
                     FRACTAL_COLOR_START: "#00ffff",
                     STRENGTH_MIN: 0,
                     STRENGTH_MAX: 100,
-                    STRENGTH_START: 50,
-                    GAMMA_MIN: 0, // unused now
-                    GAMMA_MAX: 1, // unused now
+                    STRENGTH_START: 80,
                 };
+
+                // Radial geometry in the complex plane
+                const R_SET = 2.0; // Mandelbrot "cut" radius
+                const R_MARGIN = 0.25; // extra margin beyond r=2
+                const R_WORLD = R_SET + R_MARGIN; // world extends to ±R_WORLD
+                const R_CLIP = R_SET; // hard cut to black beyond this
+                const R_FADE = 1.8; // start fading here toward R_CLIP
+
+                function radialWeight(r) {
+                    if (r >= R_CLIP) return 0;
+                    if (r <= R_FADE) return 1;
+                    const t = (R_CLIP - r) / (R_CLIP - R_FADE); // 0..1
+                    return t < 0 ? 0 : t > 1 ? 1 : t;
+                }
 
                 const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
@@ -141,6 +153,7 @@
                 let finalReady = false;
 
                 let iterations = null; // Float32Array(internalW * internalH)
+                let radialMask = null; // Float32Array(internalW * internalH), 0..1
                 let img = null; // ImageData
                 let imgData = null; // Uint8ClampedArray
 
@@ -176,8 +189,11 @@
                     viewOffsetY = 0;
 
                     iterations = new Float32Array(internalW * internalH);
-                    for (let i = 0; i < iterations.length; i++)
+                    radialMask = new Float32Array(internalW * internalH);
+                    for (let i = 0; i < iterations.length; i++) {
                         iterations[i] = -1;
+                        radialMask[i] = 1;
+                    }
 
                     img = dataCtx.createImageData(internalW, internalH);
                     imgData = img.data;
@@ -242,14 +258,14 @@
                     return mu;
                 }
 
-                // Map pixel to complex plane; whole set visible
+                // Map pixel to complex plane, centered at origin,
+                // world extends to ±R_WORLD in both axes (with aspect-aware scaling).
                 function pixelToComplex(px, py, W, H) {
                     const aspect = W / H;
-                    const worldH = 3.0; // y: -1.5 .. +1.5
-                    const worldW = worldH * aspect; // match aspect
-                    const xCenter = -0.75;
-                    const x0 = xCenter - worldW / 2;
-                    const y0 = -1.5;
+                    const worldH = 2 * R_WORLD; // -R_WORLD .. +R_WORLD
+                    const worldW = worldH * aspect;
+                    const x0 = -worldW / 2;
+                    const y0 = -R_WORLD;
 
                     const cx = x0 + (px / W) * worldW;
                     const cy = y0 + (py / H) * worldH;
@@ -257,6 +273,7 @@
                 }
 
                 // Slider -> band width (how much of norm space is used for glow)
+                // Inverted so "max glow" is at the right end of the slider.
                 function getBandWidth() {
                     const raw = parseInt(fractalStrengthInput.value, 10) || 0;
                     const sNorm = Math.min(
@@ -268,10 +285,10 @@
                                     1),
                         ),
                     );
-                    // 0 -> thin band; 1 -> very thick (almost full exterior)
+                    const sInv = 1 - sNorm; // invert slider response
                     const minW = 0.1;
                     const maxW = 0.95;
-                    return minW + sNorm * (maxW - minW);
+                    return minW + sInv * (maxW - minW);
                 }
 
                 function getPaletteParams() {
@@ -282,7 +299,7 @@
                 }
 
                 // Monotone ramp:
-                // - t >= maxIter (inside) -> black
+                // - t >= maxIter (inside or "clipped") -> black
                 // - norm in (0..bandWidth) ramps 0..1
                 // - norm >= bandWidth -> full color
                 function colorForT(t, params) {
@@ -315,11 +332,16 @@
 
                     for (let idxPix = 0; idxPix < iterations.length; idxPix++) {
                         const t = iterations[idxPix];
+                        const mask =
+                            radialMask &&
+                            radialMask.length === iterations.length
+                                ? radialMask[idxPix]
+                                : 1;
                         const { r, g, b } = colorForT(t, params);
                         const idx4 = idxPix * 4;
-                        imgData[idx4] = r;
-                        imgData[idx4 + 1] = g;
-                        imgData[idx4 + 2] = b;
+                        imgData[idx4] = r * mask;
+                        imgData[idx4 + 1] = g * mask;
+                        imgData[idx4 + 2] = b * mask;
                         imgData[idx4 + 3] = 255;
                     }
                     present();
@@ -340,7 +362,10 @@
                     requestAnimationFrame(paletteLoop);
                 }
 
-                // Final supersample pass: compute at 2× resolution, then downsample to screen
+                // Final supersample pass:
+                // compute at 2× resolution, but downsample and paint each
+                // destination row as soon as both source rows are available,
+                // so you see the supersampled image creep in gradually.
                 async function supersamplePass() {
                     const upscale = 2;
                     const hiW = internalW * upscale;
@@ -349,17 +374,17 @@
 
                     const hiIter = new Float32Array(hiW * hiH);
 
-                    // World mapping for hi-res
+                    // World mapping for hi-res, same origin-centered disc + margin.
                     const aspect = hiW / hiH;
-                    const worldH = 3.0;
+                    const worldH = 2 * R_WORLD;
                     const worldW = worldH * aspect;
-                    const xCenter = -0.75;
-                    const x0 = xCenter - worldW / 2;
-                    const y0 = -1.5;
+                    const x0 = -worldW / 2;
+                    const y0 = -R_WORLD;
 
+                    const params = getPaletteParams();
                     let lastYield = performance.now();
 
-                    // Compute hi-res escape times
+                    // High-res iteration
                     for (let py = 0; py < hiH; py++) {
                         const v = py / hiH;
                         const cy = y0 + v * worldH;
@@ -367,72 +392,84 @@
                         for (let px = 0; px < hiW; px++) {
                             const u = px / hiW;
                             const cx = x0 + u * worldW;
-                            const t = mandelIterations(cx, cy, maxIter);
+                            const r2 = cx * cx + cy * cy;
+                            const t =
+                                r2 > R_CLIP * R_CLIP
+                                    ? maxIter // outside r=2 -> force black
+                                    : mandelIterations(cx, cy, maxIter);
                             hiIter[py * hiW + px] = t;
                         }
 
                         if (cancelRender) return;
 
-                        const now = performance.now();
-                        if (now - lastYield > 12) {
-                            present();
-                            await new Promise(requestAnimationFrame);
-                            lastYield = performance.now();
-                        }
-                    }
+                        // Every pair of hi-res rows gives us one dest row.
+                        if (py % upscale === upscale - 1) {
+                            const y = (py - (upscale - 1)) / upscale;
+                            if (y < internalH) {
+                                const yy0 = y * upscale;
+                                const yy1 = Math.min(yy0 + 1, hiH - 1);
 
-                    // Downsample 2×2 -> 1 using average of outside points
-                    const params = getPaletteParams();
-                    lastYield = performance.now();
+                                for (let x = 0; x < internalW; x++) {
+                                    const xx0 = x * upscale;
+                                    const xx1 = Math.min(xx0 + 1, hiW - 1);
 
-                    for (let y = 0; y < internalH; y++) {
-                        const yy0 = y * upscale;
-                        const yy1 = Math.min(yy0 + 1, hiH - 1);
+                                    // Compute complex coordinate at dest pixel center
+                                    const [cx0, cy0] = pixelToComplex(
+                                        x + 0.5,
+                                        y + 0.5,
+                                        internalW,
+                                        internalH,
+                                    );
+                                    const r = Math.sqrt(cx0 * cx0 + cy0 * cy0);
+                                    const mask = radialWeight(r);
 
-                        for (let x = 0; x < internalW; x++) {
-                            const xx0 = x * upscale;
-                            const xx1 = Math.min(xx0 + 1, hiW - 1);
+                                    let tAvg;
+                                    if (mask === 0) {
+                                        tAvg = maxIter;
+                                    } else {
+                                        let sum = 0;
+                                        let count = 0;
+                                        let allInside = true;
 
-                            let sum = 0;
-                            let count = 0;
-                            let allInside = true;
+                                        const idxs = [
+                                            yy0 * hiW + xx0,
+                                            yy0 * hiW + xx1,
+                                            yy1 * hiW + xx0,
+                                            yy1 * hiW + xx1,
+                                        ];
 
-                            const idxs = [
-                                yy0 * hiW + xx0,
-                                yy0 * hiW + xx1,
-                                yy1 * hiW + xx0,
-                                yy1 * hiW + xx1,
-                            ];
+                                        for (let k = 0; k < 4; k++) {
+                                            const t = hiIter[idxs[k]];
+                                            if (t >= maxIter) continue;
+                                            allInside = false;
+                                            sum += t;
+                                            count++;
+                                        }
 
-                            for (let k = 0; k < 4; k++) {
-                                const t = hiIter[idxs[k]];
-                                if (t >= maxIter) {
-                                    continue; // inside -> don't contribute
+                                        if (allInside || count === 0) {
+                                            tAvg = maxIter;
+                                        } else {
+                                            tAvg = sum / count;
+                                        }
+                                    }
+
+                                    const idxPix = y * internalW + x;
+                                    iterations[idxPix] = tAvg;
+                                    radialMask[idxPix] = mask;
+
+                                    const {
+                                        r: cr,
+                                        g: cg,
+                                        b: cb,
+                                    } = colorForT(tAvg, params);
+                                    const idx4 = idxPix * 4;
+                                    imgData[idx4] = cr * mask;
+                                    imgData[idx4 + 1] = cg * mask;
+                                    imgData[idx4 + 2] = cb * mask;
+                                    imgData[idx4 + 3] = 255;
                                 }
-                                allInside = false;
-                                sum += t;
-                                count++;
                             }
-
-                            let tAvg;
-                            if (allInside || count === 0) {
-                                tAvg = maxIter; // inside => black
-                            } else {
-                                tAvg = sum / count;
-                            }
-
-                            const idxPix = y * internalW + x;
-                            iterations[idxPix] = tAvg;
-
-                            const { r, g, b } = colorForT(tAvg, params);
-                            const idx4 = idxPix * 4;
-                            imgData[idx4] = r;
-                            imgData[idx4 + 1] = g;
-                            imgData[idx4 + 2] = b;
-                            imgData[idx4 + 3] = 255;
                         }
-
-                        if (cancelRender) return;
 
                         const now = performance.now();
                         if (now - lastYield > 12) {
@@ -450,8 +487,10 @@
                     cancelRender = false;
                     finalReady = false;
 
-                    for (let i = 0; i < iterations.length; i++)
+                    for (let i = 0; i < iterations.length; i++) {
                         iterations[i] = -1;
+                        radialMask[i] = 1;
+                    }
 
                     const passes = [
                         { step: 64, label: "Pass 1/6 (step=64)" },
@@ -484,26 +523,36 @@
                                     internalW,
                                     internalH,
                                 );
-                                const t = mandelIterations(cx, cy, maxIter);
+                                const r = Math.sqrt(cx * cx + cy * cy);
+                                const maskBlock = radialWeight(r);
+
+                                let tBlock;
+                                if (maskBlock === 0) {
+                                    tBlock = maxIter;
+                                } else {
+                                    tBlock = mandelIterations(cx, cy, maxIter);
+                                }
 
                                 for (let sy = 0; sy < step; sy++) {
                                     const yy = py + sy;
                                     if (yy >= internalH) break;
                                     for (let sx = 0; sx < step; sx++) {
                                         const xx = px + sx;
-                                        if (xx >= internalW) break; // important: internalW, not internalH
+                                        if (xx >= internalW) break;
 
                                         const idxPix = yy * internalW + xx;
-                                        iterations[idxPix] = t;
+                                        iterations[idxPix] = tBlock;
+                                        radialMask[idxPix] = maskBlock;
 
-                                        const { r, g, b } = colorForT(
-                                            t,
-                                            params,
-                                        );
+                                        const {
+                                            r: cr,
+                                            g: cg,
+                                            b: cb,
+                                        } = colorForT(tBlock, params);
                                         const idx4 = idxPix * 4;
-                                        imgData[idx4] = r;
-                                        imgData[idx4 + 1] = g;
-                                        imgData[idx4 + 2] = b;
+                                        imgData[idx4] = cr * maskBlock;
+                                        imgData[idx4 + 1] = cg * maskBlock;
+                                        imgData[idx4 + 2] = cb * maskBlock;
                                         imgData[idx4 + 3] = 255;
                                     }
                                 }
