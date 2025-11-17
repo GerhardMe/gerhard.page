@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Mandelbrot Viewer (Progressive, Static After Render)</title>
+        <title>Mandelbrot Viewer (CPU, Progressive, Glow)</title>
         <style>
             html,
             body {
@@ -66,6 +66,10 @@
                 background: transparent;
             }
 
+            #controls input[type="range"] {
+                width: 140px;
+            }
+
             #status {
                 margin-top: 4px;
                 opacity: 0.7;
@@ -82,73 +86,104 @@
         <div id="controls">
             <div><strong>Palette</strong></div>
             <label>
-                Inside
-                <input type="color" id="insideColor" value="#000000" />
+                Fractal color
+                <input type="color" id="fractalColor" />
             </label>
             <label>
-                Outside A
-                <input type="color" id="outside1Color" value="#003366" />
-            </label>
-            <label>
-                Outside B
-                <input type="color" id="outside2Color" value="#ffaa33" />
+                Glow width
+                <input type="range" id="fractalStrength" />
             </label>
             <div id="status">Initializing…</div>
         </div>
 
         <script>
             (function () {
+                const CONFIG = {
+                    MAX_ITER: 500,
+                    FRACTAL_COLOR_START: "#00ffff",
+                    STRENGTH_MIN: 0,
+                    STRENGTH_MAX: 1000,
+                    STRENGTH_START: 800,
+                    GAMMA_MIN: 0.3, // wide glow
+                    GAMMA_MAX: 6.0, // thin glow
+                };
+
                 const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
-                const dpr = window.devicePixelRatio || 1;
+                const deviceDpr = window.devicePixelRatio || 1;
 
-                const insideInput = document.getElementById("insideColor");
-                const outside1Input = document.getElementById("outside1Color");
-                const outside2Input = document.getElementById("outside2Color");
+                const fractalInput = document.getElementById("fractalColor");
+                const fractalStrengthInput =
+                    document.getElementById("fractalStrength");
                 const statusEl = document.getElementById("status");
 
-                // Base offscreen canvas where the fractal lives at screen resolution
+                fractalInput.value = CONFIG.FRACTAL_COLOR_START;
+                fractalStrengthInput.min = String(CONFIG.STRENGTH_MIN);
+                fractalStrengthInput.max = String(CONFIG.STRENGTH_MAX);
+                fractalStrengthInput.value = String(CONFIG.STRENGTH_START);
+
+                // Offscreen canvas at *screen resolution* (no super-res factor)
                 const dataCanvas = document.createElement("canvas");
                 const dataCtx = dataCanvas.getContext("2d");
 
-                // View transform (applied to main canvas when drawing dataCanvas)
+                let width = 0; // backing width  in device pixels
+                let height = 0; // backing height in device pixels
+                let internalW = 0; // same as width
+                let internalH = 0; // same as height
+
+                // View transform for pan/zoom of the final bitmap
                 let viewScale = 1;
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
-                // Rendering state
-                let width = 0;
-                let height = 0;
-                let maxIter = 500;
+                const maxIter = CONFIG.MAX_ITER;
                 let rendering = false;
                 let cancelRender = false;
-                let finalIterations = null; // Float32Array of averaged escape values after supersampling
                 let finalReady = false;
 
-                // Pointer state for panning
+                // Per-pixel escape time
+                let iterations = null; // Float32Array(internalW * internalH)
+                let img = null; // ImageData
+                let imgData = null; // Uint8ClampedArray
+
+                // Panning
                 let isPanning = false;
                 let panStartX = 0;
                 let panStartY = 0;
                 let panOrigOffsetX = 0;
                 let panOrigOffsetY = 0;
 
-                function resize() {
-                    const w = window.innerWidth;
-                    const h = window.innerHeight;
-                    width = Math.floor(w * dpr);
-                    height = Math.floor(h * dpr);
+                // Palette scheduling
+                let paletteDirty = false;
+                let paletteRecolorInProgress = false;
 
+                function resize() {
+                    const cssW = window.innerWidth;
+                    const cssH = window.innerHeight;
+
+                    width = Math.floor(cssW * deviceDpr);
+                    height = Math.floor(cssH * deviceDpr);
                     canvas.width = width;
                     canvas.height = height;
-                    canvas.style.width = w + "px";
-                    canvas.style.height = h + "px";
+                    canvas.style.width = cssW + "px";
+                    canvas.style.height = cssH + "px";
 
-                    dataCanvas.width = width;
-                    dataCanvas.height = height;
+                    // Offscreen buffer = screen resolution
+                    internalW = width;
+                    internalH = height;
+                    dataCanvas.width = internalW;
+                    dataCanvas.height = internalH;
 
                     viewScale = 1;
                     viewOffsetX = 0;
                     viewOffsetY = 0;
+
+                    iterations = new Float32Array(internalW * internalH);
+                    for (let i = 0; i < iterations.length; i++)
+                        iterations[i] = -1;
+
+                    img = dataCtx.createImageData(internalW, internalH);
+                    imgData = img.data;
                 }
 
                 function hexToRgb(hex) {
@@ -164,29 +199,33 @@
                     };
                 }
 
-                function lerp(a, b, t) {
-                    return a + (b - a) * t;
+                function setStatus(text) {
+                    statusEl.textContent = text;
                 }
 
                 function present() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                     ctx.clearRect(0, 0, width, height);
-                    ctx.setTransform(
-                        viewScale,
+
+                    const destW = width * viewScale;
+                    const destH = height * viewScale;
+                    const destX = viewOffsetX;
+                    const destY = viewOffsetY;
+
+                    dataCtx.putImageData(img, 0, 0);
+                    ctx.drawImage(
+                        dataCanvas,
                         0,
                         0,
-                        viewScale,
-                        viewOffsetX,
-                        viewOffsetY,
+                        internalW,
+                        internalH,
+                        destX,
+                        destY,
+                        destW,
+                        destH,
                     );
-                    ctx.drawImage(dataCanvas, 0, 0);
                 }
 
-                function setStatus(text) {
-                    statusEl.textContent = text;
-                }
-
-                // Compute smooth iteration count for a single complex point
                 function mandelIterations(cx, cy, maxIterLocal) {
                     let x = 0;
                     let y = 0;
@@ -200,46 +239,112 @@
                         yy = y * y;
                         iter++;
                     }
-                    if (iter >= maxIterLocal) {
-                        return maxIterLocal;
-                    }
-                    // Smooth coloring
+                    if (iter >= maxIterLocal) return maxIterLocal;
                     const mag = Math.sqrt(xx + yy);
                     const mu = iter + 1 - Math.log(Math.log(mag)) / Math.log(2);
                     return mu;
                 }
 
-                // Map pixel coordinates to Mandelbrot plane
-                function pixelToComplex(px, py, w, h) {
-                    // Classic view roughly centered at (-0.5, 0)
-                    const aspect = w / h;
-                    const scale = 3.0; // width in complex plane
-                    const x0 = -0.5 - scale / 2;
-                    const y0 = -scale / (2 * aspect);
-                    const cx = x0 + (px / w) * scale;
-                    const cy = y0 + ((py / h) * scale) / aspect;
+                // Map pixel to complex plane; whole set visible
+                function pixelToComplex(px, py) {
+                    const aspect = internalW / internalH;
+                    const worldH = 3.0; // y: -1.5 .. +1.5
+                    const worldW = worldH * aspect; // match aspect
+                    const xCenter = -0.75;
+                    const x0 = xCenter - worldW / 2;
+                    const y0 = -1.5;
+
+                    const cx = x0 + (px / internalW) * worldW;
+                    const cy = y0 + (py / internalH) * worldH;
                     return [cx, cy];
+                }
+
+                function getGammaFromSlider() {
+                    const raw = parseInt(fractalStrengthInput.value, 10) || 0;
+                    const sNorm = Math.min(
+                        1,
+                        Math.max(
+                            0,
+                            (raw - CONFIG.STRENGTH_MIN) /
+                                (CONFIG.STRENGTH_MAX - CONFIG.STRENGTH_MIN ||
+                                    1),
+                        ),
+                    );
+                    const gRange = CONFIG.GAMMA_MAX - CONFIG.GAMMA_MIN;
+                    return CONFIG.GAMMA_MAX - sNorm * gRange;
+                }
+
+                function getPalette() {
+                    return {
+                        frac: hexToRgb(fractalInput.value),
+                        gamma: getGammaFromSlider(),
+                    };
+                }
+
+                function colorForT(t, palette) {
+                    if (t <= 0 || t >= maxIter) {
+                        return { r: 0, g: 0, b: 0 };
+                    }
+                    const { frac, gamma } = palette;
+                    const norm = t / maxIter; // 0..1, boundary near 1
+                    const w = Math.pow(norm, gamma); // glow
+                    return {
+                        r: frac.r * w,
+                        g: frac.g * w,
+                        b: frac.b * w,
+                    };
+                }
+
+                // Full recolor with current palette; used for palette changes
+                function recolorFromIterations() {
+                    if (!iterations || !imgData) return;
+                    const palette = getPalette();
+
+                    for (let idxPix = 0; idxPix < iterations.length; idxPix++) {
+                        const t = iterations[idxPix];
+                        const { r, g, b } = colorForT(t, palette);
+                        const idx4 = idxPix * 4;
+                        imgData[idx4] = r;
+                        imgData[idx4 + 1] = g;
+                        imgData[idx4 + 2] = b;
+                        imgData[idx4 + 3] = 255;
+                    }
+                    present();
+                }
+
+                function requestPaletteRecolor() {
+                    paletteDirty = true;
+                }
+
+                // Coalesce palette changes to once per animation frame
+                function paletteLoop() {
+                    if (paletteDirty && !paletteRecolorInProgress) {
+                        paletteDirty = false;
+                        paletteRecolorInProgress = true;
+                        recolorFromIterations();
+                        paletteRecolorInProgress = false;
+                    }
+                    requestAnimationFrame(paletteLoop);
                 }
 
                 async function renderProgressive() {
                     rendering = true;
                     cancelRender = false;
                     finalReady = false;
-                    finalIterations = null;
+
+                    for (let i = 0; i < iterations.length; i++)
+                        iterations[i] = -1;
 
                     const passes = [
-                        { step: 8, label: "Pass 1/4 (coarse)" },
-                        { step: 4, label: "Pass 2/4 (medium)" },
-                        { step: 1, label: "Pass 3/4 (full res)" },
+                        { step: 64, label: "Pass 1/6 (step=64)" },
+                        { step: 32, label: "Pass 2/6 (step=32)" },
+                        { step: 16, label: "Pass 3/6 (step=16)" },
+                        { step: 8, label: "Pass 4/6 (step=8)" },
+                        { step: 4, label: "Pass 5/6 (step=4)" },
+                        { step: 1, label: "Pass 6/6 (step=1)" },
                     ];
 
-                    // Progressive passes on base resolution canvas
-                    const baseImage = dataCtx.getImageData(0, 0, width, height);
-                    const baseData = baseImage.data;
-
-                    const inside = hexToRgb(insideInput.value);
-                    const out1 = hexToRgb(outside1Input.value);
-                    const out2 = hexToRgb(outside2Input.value);
+                    let lastYield = performance.now();
 
                     for (let p = 0; p < passes.length; p++) {
                         const { step, label } = passes[p];
@@ -249,99 +354,50 @@
                             present();
                             return;
                         }
-                        setStatus(label);
+                        setStatus(`${label}  [${internalW}×${internalH}]`);
 
-                        for (let py = 0; py < height; py += step) {
-                            for (let px = 0; px < width; px += step) {
+                        for (let py = 0; py < internalH; py += step) {
+                            // new palette each row, so glow/color changes apply while rendering
+                            const palette = getPalette();
+
+                            for (let px = 0; px < internalW; px += step) {
                                 const [cx, cy] = pixelToComplex(
                                     px + step * 0.5,
                                     py + step * 0.5,
-                                    width,
-                                    height,
                                 );
                                 const t = mandelIterations(cx, cy, maxIter);
-                                let r, g, b;
-
-                                if (t >= maxIter) {
-                                    r = inside.r;
-                                    g = inside.g;
-                                    b = inside.b;
-                                } else {
-                                    const norm = t / maxIter;
-                                    const mix = norm;
-                                    const r1 = lerp(out1.r, out2.r, mix);
-                                    const g1 = lerp(out1.g, out2.g, mix);
-                                    const b1 = lerp(out1.b, out2.b, mix);
-                                    r = r1;
-                                    g = g1;
-                                    b = b1;
-                                }
 
                                 for (let sy = 0; sy < step; sy++) {
                                     const yy = py + sy;
-                                    if (yy >= height) break;
+                                    if (yy >= internalH) break;
                                     for (let sx = 0; sx < step; sx++) {
                                         const xx = px + sx;
-                                        if (xx >= width) break;
-                                        const idx = 4 * (yy * width + xx);
-                                        baseData[idx] = r;
-                                        baseData[idx + 1] = g;
-                                        baseData[idx + 2] = b;
-                                        baseData[idx + 3] = 255;
+                                        if (xx >= internalW) break;
+
+                                        const idxPix = yy * internalW + xx;
+                                        iterations[idxPix] = t;
+
+                                        const { r, g, b } = colorForT(
+                                            t,
+                                            palette,
+                                        );
+                                        const idx4 = idxPix * 4;
+                                        imgData[idx4] = r;
+                                        imgData[idx4 + 1] = g;
+                                        imgData[idx4 + 2] = b;
+                                        imgData[idx4 + 3] = 255;
                                     }
                                 }
                             }
 
                             if (cancelRender) break;
-                            if ((py & 7) === 0) {
-                                dataCtx.putImageData(baseImage, 0, 0);
+
+                            const now = performance.now();
+                            if (now - lastYield > 12) {
                                 present();
                                 await new Promise(requestAnimationFrame);
+                                lastYield = performance.now();
                             }
-                        }
-
-                        if (cancelRender) {
-                            rendering = false;
-                            dataCtx.putImageData(baseImage, 0, 0);
-                            present();
-                            setStatus("Render cancelled");
-                            return;
-                        }
-                    }
-
-                    dataCtx.putImageData(baseImage, 0, 0);
-                    present();
-
-                    // Final supersampling pass: 2x width and 2x height (4x pixels)
-                    await supersamplePass();
-                }
-
-                async function supersamplePass() {
-                    if (cancelRender) {
-                        rendering = false;
-                        setStatus("Render cancelled");
-                        present();
-                        return;
-                    }
-
-                    setStatus("Pass 4/4 (supersampling)");
-
-                    const hiW = width * 2;
-                    const hiH = height * 2;
-
-                    const hiIterations = new Float32Array(hiW * hiH);
-
-                    // Compute hi-res iterations (no color yet)
-                    for (let py = 0; py < hiH; py++) {
-                        for (let px = 0; px < hiW; px++) {
-                            const [cx, cy] = pixelToComplex(
-                                px + 0.5,
-                                py + 0.5,
-                                hiW,
-                                hiH,
-                            );
-                            const t = mandelIterations(cx, cy, maxIter);
-                            hiIterations[py * hiW + px] = t;
                         }
 
                         if (cancelRender) {
@@ -350,128 +406,21 @@
                             present();
                             return;
                         }
-
-                        if ((py & 15) === 0) {
-                            await new Promise(requestAnimationFrame);
-                        }
                     }
-
-                    // Downsample: average 2×2 hi-res block into one screen pixel
-                    finalIterations = new Float32Array(width * height);
-                    const img = dataCtx.createImageData(width, height);
-                    const data = img.data;
-
-                    const inside = hexToRgb(insideInput.value);
-                    const out1 = hexToRgb(outside1Input.value);
-                    const out2 = hexToRgb(outside2Input.value);
-
-                    for (let py = 0; py < height; py++) {
-                        const hy0 = 2 * py;
-                        const hy1 = hy0 + 1;
-                        for (let px = 0; px < width; px++) {
-                            const hx0 = 2 * px;
-                            const hx1 = hx0 + 1;
-
-                            const idx00 = hy0 * hiW + hx0;
-                            const idx10 = hy0 * hiW + hx1;
-                            const idx01 = hy1 * hiW + hx0;
-                            const idx11 = hy1 * hiW + hx1;
-
-                            const t00 = hiIterations[idx00];
-                            const t10 = hiIterations[idx10];
-                            const t01 = hiIterations[idx01];
-                            const t11 = hiIterations[idx11];
-
-                            const avgT = 0.25 * (t00 + t10 + t01 + t11);
-                            finalIterations[py * width + px] = avgT;
-
-                            let r, g, b;
-                            if (avgT >= maxIter) {
-                                r = inside.r;
-                                g = inside.g;
-                                b = inside.b;
-                            } else {
-                                const norm = avgT / maxIter;
-                                const mix = norm;
-                                const r1 = lerp(out1.r, out2.r, mix);
-                                const g1 = lerp(out1.g, out2.g, mix);
-                                const b1 = lerp(out1.b, out2.b, mix);
-                                r = r1;
-                                g = g1;
-                                b = b1;
-                            }
-
-                            const idx = 4 * (py * width + px);
-                            data[idx] = r;
-                            data[idx + 1] = g;
-                            data[idx + 2] = b;
-                            data[idx + 3] = 255;
-                        }
-
-                        if ((py & 15) === 0) {
-                            await new Promise(requestAnimationFrame);
-                        }
-                    }
-
-                    dataCtx.putImageData(img, 0, 0);
-                    present();
 
                     rendering = false;
                     finalReady = true;
-                    setStatus("Done (static bitmap; pan/zoom is cheap)");
-                }
-
-                // Recolor final image without recomputing Mandelbrot (uses finalIterations)
-                function recolorFinal() {
-                    if (!finalReady || !finalIterations) return;
-
-                    const img = dataCtx.createImageData(width, height);
-                    const data = img.data;
-
-                    const inside = hexToRgb(insideInput.value);
-                    const out1 = hexToRgb(outside1Input.value);
-                    const out2 = hexToRgb(outside2Input.value);
-
-                    for (let py = 0; py < height; py++) {
-                        for (let px = 0; px < width; px++) {
-                            const t = finalIterations[py * width + px];
-                            let r, g, b;
-
-                            if (t >= maxIter) {
-                                r = inside.r;
-                                g = inside.g;
-                                b = inside.b;
-                            } else {
-                                const norm = t / maxIter;
-                                const mix = norm;
-                                const r1 = lerp(out1.r, out2.r, mix);
-                                const g1 = lerp(out1.g, out2.g, mix);
-                                const b1 = lerp(out1.b, out2.b, mix);
-                                r = r1;
-                                g = g1;
-                                b = b1;
-                            }
-
-                            const idx = 4 * (py * width + px);
-                            data[idx] = r;
-                            data[idx + 1] = g;
-                            data[idx + 2] = b;
-                            data[idx + 3] = 255;
-                        }
-                    }
-
-                    dataCtx.putImageData(img, 0, 0);
+                    setStatus(
+                        `Done [${internalW}×${internalH}, static bitmap]`,
+                    );
                     present();
                 }
 
-                // Cancel any running render when user starts interacting
                 function killRenderIfAny() {
-                    if (rendering) {
-                        cancelRender = true;
-                    }
+                    if (rendering) cancelRender = true;
                 }
 
-                // Pan/zoom handlers
+                // Panning
                 canvas.addEventListener("pointerdown", (e) => {
                     killRenderIfAny();
                     isPanning = true;
@@ -484,8 +433,8 @@
 
                 canvas.addEventListener("pointermove", (e) => {
                     if (!isPanning) return;
-                    const dx = (e.clientX - panStartX) * dpr;
-                    const dy = (e.clientY - panStartY) * dpr;
+                    const dx = (e.clientX - panStartX) * deviceDpr;
+                    const dy = (e.clientY - panStartY) * deviceDpr;
                     viewOffsetX = panOrigOffsetX + dx;
                     viewOffsetY = panOrigOffsetY + dy;
                     present();
@@ -503,6 +452,7 @@
                     canvas.releasePointerCapture(e.pointerId);
                 });
 
+                // Zoom
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
@@ -510,42 +460,33 @@
                         killRenderIfAny();
 
                         const rect = canvas.getBoundingClientRect();
-                        const cx = (e.clientX - rect.left) * dpr;
-                        const cy = (e.clientY - rect.top) * dpr;
+                        const cx = (e.clientX - rect.left) * deviceDpr;
+                        const cy = (e.clientY - rect.top) * deviceDpr;
 
                         const delta = -e.deltaY;
-                        const zoomFactor = Math.exp(delta * 0.001); // smooth-ish
+                        const zoomFactor = Math.exp(delta * 0.001);
 
-                        const newScale = viewScale * zoomFactor;
-
-                        // Zoom around cursor
                         viewOffsetX = cx - zoomFactor * (cx - viewOffsetX);
                         viewOffsetY = cy - zoomFactor * (cy - viewOffsetY);
-                        viewScale = newScale;
+                        viewScale *= zoomFactor;
 
                         present();
                     },
                     { passive: false },
                 );
 
-                insideInput.addEventListener("input", () => {
-                    if (finalReady) recolorFinal();
-                });
-                outside1Input.addEventListener("input", () => {
-                    if (finalReady) recolorFinal();
-                });
-                outside2Input.addEventListener("input", () => {
-                    if (finalReady) recolorFinal();
-                });
+                // Palette changes: mark dirty, recolor scheduled in paletteLoop
+                fractalInput.addEventListener("input", requestPaletteRecolor);
+                fractalStrengthInput.addEventListener(
+                    "input",
+                    requestPaletteRecolor,
+                );
 
-                // Init
                 resize();
                 present();
                 setStatus("Rendering…");
+                paletteLoop();
                 renderProgressive();
-
-                // Optional: if you want, you could re-render on window resize.
-                // That is *not* required for your description, so omitted.
             })();
         </script>
     </body>
