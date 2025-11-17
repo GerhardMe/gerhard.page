@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Mandelbrot Viewer (CPU, Progressive, Glow)</title>
+        <title>Mandelbrot Viewer (CPU, Progressive, Supersampled Glow)</title>
         <style>
             html,
             body {
@@ -102,10 +102,10 @@
                     MAX_ITER: 500,
                     FRACTAL_COLOR_START: "#00ffff",
                     STRENGTH_MIN: 0,
-                    STRENGTH_MAX: 1000,
-                    STRENGTH_START: 800,
-                    GAMMA_MIN: 0.3, // wide glow
-                    GAMMA_MAX: 6.0, // thin glow
+                    STRENGTH_MAX: 100,
+                    STRENGTH_START: 50,
+                    GAMMA_MIN: 0, // unused now
+                    GAMMA_MAX: 1, // unused now
                 };
 
                 const canvas = document.getElementById("view");
@@ -122,16 +122,15 @@
                 fractalStrengthInput.max = String(CONFIG.STRENGTH_MAX);
                 fractalStrengthInput.value = String(CONFIG.STRENGTH_START);
 
-                // Offscreen canvas at *screen resolution* (no super-res factor)
+                // Offscreen canvas at screen resolution
                 const dataCanvas = document.createElement("canvas");
                 const dataCtx = dataCanvas.getContext("2d");
 
-                let width = 0; // backing width  in device pixels
-                let height = 0; // backing height in device pixels
-                let internalW = 0; // same as width
-                let internalH = 0; // same as height
+                let width = 0;
+                let height = 0;
+                let internalW = 0;
+                let internalH = 0;
 
-                // View transform for pan/zoom of the final bitmap
                 let viewScale = 1;
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
@@ -141,7 +140,6 @@
                 let cancelRender = false;
                 let finalReady = false;
 
-                // Per-pixel escape time
                 let iterations = null; // Float32Array(internalW * internalH)
                 let img = null; // ImageData
                 let imgData = null; // Uint8ClampedArray
@@ -168,7 +166,6 @@
                     canvas.style.width = cssW + "px";
                     canvas.style.height = cssH + "px";
 
-                    // Offscreen buffer = screen resolution
                     internalW = width;
                     internalH = height;
                     dataCanvas.width = internalW;
@@ -246,20 +243,21 @@
                 }
 
                 // Map pixel to complex plane; whole set visible
-                function pixelToComplex(px, py) {
-                    const aspect = internalW / internalH;
+                function pixelToComplex(px, py, W, H) {
+                    const aspect = W / H;
                     const worldH = 3.0; // y: -1.5 .. +1.5
                     const worldW = worldH * aspect; // match aspect
                     const xCenter = -0.75;
                     const x0 = xCenter - worldW / 2;
                     const y0 = -1.5;
 
-                    const cx = x0 + (px / internalW) * worldW;
-                    const cy = y0 + (py / internalH) * worldH;
+                    const cx = x0 + (px / W) * worldW;
+                    const cy = y0 + (py / H) * worldH;
                     return [cx, cy];
                 }
 
-                function getGammaFromSlider() {
+                // Slider -> band width (how much of norm space is used for glow)
+                function getBandWidth() {
                     const raw = parseInt(fractalStrengthInput.value, 10) || 0;
                     const sNorm = Math.min(
                         1,
@@ -270,24 +268,39 @@
                                     1),
                         ),
                     );
-                    const gRange = CONFIG.GAMMA_MAX - CONFIG.GAMMA_MIN;
-                    return CONFIG.GAMMA_MAX - sNorm * gRange;
+                    // 0 -> thin band; 1 -> very thick (almost full exterior)
+                    const minW = 0.1;
+                    const maxW = 0.95;
+                    return minW + sNorm * (maxW - minW);
                 }
 
-                function getPalette() {
+                function getPaletteParams() {
                     return {
                         frac: hexToRgb(fractalInput.value),
-                        gamma: getGammaFromSlider(),
+                        bandWidth: getBandWidth(),
                     };
                 }
 
-                function colorForT(t, palette) {
+                // Monotone ramp:
+                // - t >= maxIter (inside) -> black
+                // - norm in (0..bandWidth) ramps 0..1
+                // - norm >= bandWidth -> full color
+                function colorForT(t, params) {
                     if (t <= 0 || t >= maxIter) {
                         return { r: 0, g: 0, b: 0 };
                     }
-                    const { frac, gamma } = palette;
-                    const norm = t / maxIter; // 0..1, boundary near 1
-                    const w = Math.pow(norm, gamma); // glow
+                    const { frac, bandWidth } = params;
+                    const norm = t / maxIter; // 0..1
+
+                    let w;
+                    if (norm <= 0) {
+                        w = 0;
+                    } else if (norm >= bandWidth) {
+                        w = 1;
+                    } else {
+                        w = norm / bandWidth;
+                    }
+
                     return {
                         r: frac.r * w,
                         g: frac.g * w,
@@ -298,11 +311,11 @@
                 // Full recolor with current palette; used for palette changes
                 function recolorFromIterations() {
                     if (!iterations || !imgData) return;
-                    const palette = getPalette();
+                    const params = getPaletteParams();
 
                     for (let idxPix = 0; idxPix < iterations.length; idxPix++) {
                         const t = iterations[idxPix];
-                        const { r, g, b } = colorForT(t, palette);
+                        const { r, g, b } = colorForT(t, params);
                         const idx4 = idxPix * 4;
                         imgData[idx4] = r;
                         imgData[idx4 + 1] = g;
@@ -325,6 +338,111 @@
                         paletteRecolorInProgress = false;
                     }
                     requestAnimationFrame(paletteLoop);
+                }
+
+                // Final supersample pass: compute at 2× resolution, then downsample to screen
+                async function supersamplePass() {
+                    const upscale = 2;
+                    const hiW = internalW * upscale;
+                    const hiH = internalH * upscale;
+                    setStatus(`Pass 7/7 (supersample ${hiW}×${hiH})`);
+
+                    const hiIter = new Float32Array(hiW * hiH);
+
+                    // World mapping for hi-res
+                    const aspect = hiW / hiH;
+                    const worldH = 3.0;
+                    const worldW = worldH * aspect;
+                    const xCenter = -0.75;
+                    const x0 = xCenter - worldW / 2;
+                    const y0 = -1.5;
+
+                    let lastYield = performance.now();
+
+                    // Compute hi-res escape times
+                    for (let py = 0; py < hiH; py++) {
+                        const v = py / hiH;
+                        const cy = y0 + v * worldH;
+
+                        for (let px = 0; px < hiW; px++) {
+                            const u = px / hiW;
+                            const cx = x0 + u * worldW;
+                            const t = mandelIterations(cx, cy, maxIter);
+                            hiIter[py * hiW + px] = t;
+                        }
+
+                        if (cancelRender) return;
+
+                        const now = performance.now();
+                        if (now - lastYield > 12) {
+                            present();
+                            await new Promise(requestAnimationFrame);
+                            lastYield = performance.now();
+                        }
+                    }
+
+                    // Downsample 2×2 -> 1 using average of outside points
+                    const params = getPaletteParams();
+                    lastYield = performance.now();
+
+                    for (let y = 0; y < internalH; y++) {
+                        const yy0 = y * upscale;
+                        const yy1 = Math.min(yy0 + 1, hiH - 1);
+
+                        for (let x = 0; x < internalW; x++) {
+                            const xx0 = x * upscale;
+                            const xx1 = Math.min(xx0 + 1, hiW - 1);
+
+                            let sum = 0;
+                            let count = 0;
+                            let allInside = true;
+
+                            const idxs = [
+                                yy0 * hiW + xx0,
+                                yy0 * hiW + xx1,
+                                yy1 * hiW + xx0,
+                                yy1 * hiW + xx1,
+                            ];
+
+                            for (let k = 0; k < 4; k++) {
+                                const t = hiIter[idxs[k]];
+                                if (t >= maxIter) {
+                                    continue; // inside -> don't contribute
+                                }
+                                allInside = false;
+                                sum += t;
+                                count++;
+                            }
+
+                            let tAvg;
+                            if (allInside || count === 0) {
+                                tAvg = maxIter; // inside => black
+                            } else {
+                                tAvg = sum / count;
+                            }
+
+                            const idxPix = y * internalW + x;
+                            iterations[idxPix] = tAvg;
+
+                            const { r, g, b } = colorForT(tAvg, params);
+                            const idx4 = idxPix * 4;
+                            imgData[idx4] = r;
+                            imgData[idx4 + 1] = g;
+                            imgData[idx4 + 2] = b;
+                            imgData[idx4 + 3] = 255;
+                        }
+
+                        if (cancelRender) return;
+
+                        const now = performance.now();
+                        if (now - lastYield > 12) {
+                            present();
+                            await new Promise(requestAnimationFrame);
+                            lastYield = performance.now();
+                        }
+                    }
+
+                    present();
                 }
 
                 async function renderProgressive() {
@@ -357,13 +475,14 @@
                         setStatus(`${label}  [${internalW}×${internalH}]`);
 
                         for (let py = 0; py < internalH; py += step) {
-                            // new palette each row, so glow/color changes apply while rendering
-                            const palette = getPalette();
+                            const params = getPaletteParams();
 
                             for (let px = 0; px < internalW; px += step) {
                                 const [cx, cy] = pixelToComplex(
                                     px + step * 0.5,
                                     py + step * 0.5,
+                                    internalW,
+                                    internalH,
                                 );
                                 const t = mandelIterations(cx, cy, maxIter);
 
@@ -372,14 +491,14 @@
                                     if (yy >= internalH) break;
                                     for (let sx = 0; sx < step; sx++) {
                                         const xx = px + sx;
-                                        if (xx >= internalW) break;
+                                        if (xx >= internalW) break; // important: internalW, not internalH
 
                                         const idxPix = yy * internalW + xx;
                                         iterations[idxPix] = t;
 
                                         const { r, g, b } = colorForT(
                                             t,
-                                            palette,
+                                            params,
                                         );
                                         const idx4 = idxPix * 4;
                                         imgData[idx4] = r;
@@ -408,11 +527,13 @@
                         }
                     }
 
+                    if (!cancelRender) {
+                        await supersamplePass();
+                    }
+
                     rendering = false;
                     finalReady = true;
-                    setStatus(
-                        `Done [${internalW}×${internalH}, static bitmap]`,
-                    );
+                    setStatus(`Done [${internalW}×${internalH}, supersampled]`);
                     present();
                 }
 
