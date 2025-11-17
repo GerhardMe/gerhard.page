@@ -32,6 +32,14 @@ select {
     all: unset;
 }
 
+.center {
+    display: grid;
+
+    * {
+        place-self: center;
+    }
+}
+
 /* Collor palette */
 
 :root {
