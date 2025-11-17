@@ -80,13 +80,18 @@ const title = "Mandelbrot Explorer";
                 let tileY = 0;
                 let renderId = 0; // used to cancel outdated renders
 
-                // first render uses depth (coarse→fine); later renders use step=1 only
-                let firstRenderDone = false;
-
                 // interaction state
                 let isDragging = false;
                 let lastX = 0;
                 let lastY = 0;
+
+                // last finished image (for preview warping)
+                let lastImage = null;
+                let lastView = {
+                    centerX: centerX,
+                    centerY: centerY,
+                    scale: scale,
+                };
 
                 // --------- helpers ---------
                 function resizeCanvas() {
@@ -96,17 +101,13 @@ const title = "Mandelbrot Explorer";
                     if (canvas.width !== width || canvas.height !== height) {
                         canvas.width = width;
                         canvas.height = height;
-                        // size change: old pixels invalid; clear
-                        ctx.fillStyle = "black";
-                        ctx.fillRect(0, 0, width, height);
-                        // force a fresh full depth render again
-                        firstRenderDone = false;
-                        resetRender(true);
+                        // stretch old image as best-effort preview
+                        drawPreviewFromLastImage();
+                        resetRender({ clear: true });
                     }
                 }
 
                 function maxIterForScale() {
-                    // more zoom → more iterations
                     const s = scale;
                     const base = BASE_MAX_ITER;
                     const factor = 1 + Math.log10(1 / s + 1);
@@ -136,14 +137,71 @@ const title = "Mandelbrot Explorer";
                     return { x, y };
                 }
 
-                // useCoarse:
-                //   true  -> start at START_STEP (first full render)
-                //   false -> start at 1px tiles, never regress to coarse
-                function resetRender(useCoarse) {
+                function saveLastViewImage() {
+                    if (!lastImage) {
+                        lastImage = document.createElement("canvas");
+                    }
+                    lastImage.width = canvas.width;
+                    lastImage.height = canvas.height;
+                    const lic = lastImage.getContext("2d");
+                    lic.drawImage(canvas, 0, 0);
+                    lastView.centerX = centerX;
+                    lastView.centerY = centerY;
+                    lastView.scale = scale;
+                }
+
+                function drawPreviewFromLastImage() {
+                    if (!lastImage) return;
+                    const width = canvas.width;
+                    const height = canvas.height;
+                    if (width === 0 || height === 0) return;
+
+                    const aspect = width / height;
+
+                    const fCenterX = lastView.centerX;
+                    const fCenterY = lastView.centerY;
+                    const fScale = lastView.scale;
+
+                    // scale ratio old→new
+                    const A = fScale / scale;
+
+                    // solve for translation that maps old view to new view in screen space
+                    const Bx =
+                        (fCenterX * width -
+                            centerX * width -
+                            fScale * aspect * width +
+                            scale * aspect * width) /
+                        (2 * scale * aspect);
+
+                    const By =
+                        (-fCenterY * height +
+                            centerY * height -
+                            fScale * height +
+                            scale * height) /
+                        (2 * scale);
+
+                    ctx.setTransform(A, 0, 0, A, Bx, By);
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.drawImage(
+                        lastImage,
+                        0,
+                        0,
+                        lastImage.width,
+                        lastImage.height,
+                    );
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                }
+
+                function resetRender(options = {}) {
+                    const { clear = false } = options;
                     renderId++;
-                    currentStep = useCoarse ? START_STEP : 1;
+                    currentStep = START_STEP;
                     tileX = 0;
                     tileY = 0;
+                    if (clear) {
+                        ctx.fillStyle = "black";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
                     updateInfo("rendering...");
                     requestAnimationFrame(() => renderLoop(renderId));
                 }
@@ -164,10 +222,6 @@ const title = "Mandelbrot Explorer";
                     while (tilesDone < TILES_PER_FRAME && currentStep >= 1) {
                         if (tileY >= h) {
                             // finished this step, go finer
-                            if (currentStep === 1) {
-                                // nothing finer than 1px
-                                break;
-                            }
                             currentStep = Math.floor(currentStep / 2);
                             if (currentStep < 1) break;
                             tileX = 0;
@@ -204,7 +258,7 @@ const title = "Mandelbrot Explorer";
                             gray = 0; // inside set: black
                         } else {
                             const t = iter / maxIter;
-                            gray = Math.floor(255 * Math.sqrt(t)); // brighter on early escape
+                            gray = Math.floor(255 * Math.sqrt(t)); // brighter near early escape
                         }
 
                         ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
@@ -220,14 +274,11 @@ const title = "Mandelbrot Explorer";
                         tilesDone++;
                     }
 
-                    if (currentStep >= 1 && tileY < h) {
-                        requestAnimationFrame(() => renderLoop(id));
-                    } else if (currentStep > 1) {
-                        // still have finer steps to do
+                    if (currentStep >= 1) {
                         requestAnimationFrame(() => renderLoop(id));
                     } else {
                         updateInfo("done");
-                        firstRenderDone = true;
+                        saveLastViewImage();
                     }
                 }
 
@@ -251,16 +302,16 @@ const title = "Mandelbrot Explorer";
                     centerX += before.x - after.x;
                     centerY += before.y - after.y;
 
-                    // after first render, never drop back to coarse again
-                    resetRender(firstRenderDone ? false : true);
+                    // warp old image as preview, then refine
+                    drawPreviewFromLastImage();
+                    resetRender({ clear: false });
                 }
 
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
-                        // scroll down (deltaY>0) -> zoom OUT (factor>1)
-                        // scroll up   (deltaY<0) -> zoom IN  (factor<1)
+                        // restore original direction: deltaY > 0 → zoom OUT, < 0 → zoom IN
                         const zoomFactor = Math.exp(e.deltaY * ZOOM_SPEED);
                         zoomAt(e.clientX, e.clientY, zoomFactor);
                     },
@@ -294,7 +345,9 @@ const title = "Mandelbrot Explorer";
                     centerX -= ndx * scale * aspect;
                     centerY += ndy * scale;
 
-                    resetRender(firstRenderDone ? false : true);
+                    // warp old image as preview, then refine
+                    drawPreviewFromLastImage();
+                    resetRender({ clear: false });
                 });
 
                 window.addEventListener("mouseup", () => {
@@ -370,7 +423,8 @@ const title = "Mandelbrot Explorer";
                             centerX -= ndx * scale * aspect;
                             centerY += ndy * scale;
 
-                            resetRender(firstRenderDone ? false : true);
+                            drawPreviewFromLastImage();
+                            resetRender({ clear: false });
                         }
                     },
                     { passive: false },
@@ -400,8 +454,10 @@ const title = "Mandelbrot Explorer";
                 });
 
                 resizeCanvas();
-                // first render: full depth (coarse->fine)
-                resetRender(true);
+                // first render: no previous image, so clear
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                resetRender({ clear: false });
             });
         </script>
     </body>
