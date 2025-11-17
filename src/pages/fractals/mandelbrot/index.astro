@@ -108,13 +108,10 @@
                     STRENGTH_START: 80,
                 };
 
-                // Cutoff circle geometry
                 // Circle centered at (-0.75, 0) with radius 1.5
                 const R_CENTER_X = -0.75;
                 const R_CENTER_Y = 0.0;
                 const R_CLIP = 1.5; // hard cutoff radius
-                const R_MARGIN = 0.25; // extra visible margin around circle
-                const R_WORLD = R_CLIP + R_MARGIN; // vertical world half-span
 
                 function radiusFromCenter(cx, cy) {
                     const dx = cx - R_CENTER_X;
@@ -131,6 +128,31 @@
                 // No blur: fully on inside the circle, fully black outside
                 function radialWeight(r) {
                     return r <= R_CLIP ? 1 : 0;
+                }
+
+                // Build a mapping from pixel coordinates to complex plane
+                // such that the circle of radius R_CLIP is maximally inscribed.
+                // For aspect >= 1 (wide): circle touches top/bottom.
+                // For aspect < 1 (tall): circle touches left/right.
+                function createPixelMapper(W, H) {
+                    const aspect = W / H;
+                    let R_WORLD;
+                    if (aspect >= 1) {
+                        // wide: vertical limiting, circle hits top/bottom
+                        R_WORLD = R_CLIP;
+                    } else {
+                        // tall: horizontal limiting, circle hits left/right
+                        R_WORLD = R_CLIP / aspect;
+                    }
+                    const worldH = 2 * R_WORLD;
+                    const worldW = worldH * aspect;
+                    const x0 = R_CENTER_X - worldW / 2;
+                    const y0 = -R_WORLD;
+                    return function (px, py) {
+                        const cx = x0 + (px / W) * worldW;
+                        const cy = y0 + (py / H) * worldH;
+                        return [cx, cy];
+                    };
                 }
 
                 const canvas = document.getElementById("view");
@@ -271,21 +293,6 @@
                     return mu;
                 }
 
-                // Map pixel to complex plane.
-                // Vertical span is [-R_WORLD, +R_WORLD]
-                // Horizontal span is centered at R_CENTER_X, with same aspect.
-                function pixelToComplex(px, py, W, H) {
-                    const aspect = W / H;
-                    const worldH = 2 * R_WORLD; // -R_WORLD .. +R_WORLD in y
-                    const worldW = worldH * aspect;
-                    const x0 = R_CENTER_X - worldW / 2;
-                    const y0 = -R_WORLD;
-
-                    const cx = x0 + (px / W) * worldW;
-                    const cy = y0 + (py / H) * worldH;
-                    return [cx, cy];
-                }
-
                 // Slider -> band width (how much of norm space is used for glow)
                 // Inverted so "max glow" is at the right end of the slider.
                 function getBandWidth() {
@@ -389,17 +396,15 @@
 
                     const hiIter = new Float32Array(hiW * hiH);
 
+                    const mapHi = createPixelMapper(hiW, hiH);
+                    const mapMain = createPixelMapper(internalW, internalH);
+
                     let lastYield = performance.now();
 
                     // High-res iteration
                     for (let py = 0; py < hiH; py++) {
                         for (let px = 0; px < hiW; px++) {
-                            const [cx, cy] = pixelToComplex(
-                                px + 0.5,
-                                py + 0.5,
-                                hiW,
-                                hiH,
-                            );
+                            const [cx, cy] = mapHi(px + 0.5, py + 0.5);
                             const t = insideClip(cx, cy)
                                 ? mandelIterations(cx, cy, maxIter)
                                 : maxIter; // outside circle -> force black
@@ -423,11 +428,9 @@
                                     const xx1 = Math.min(xx0 + 1, hiW - 1);
 
                                     // Complex coordinate at dest pixel center
-                                    const [cx0, cy0] = pixelToComplex(
+                                    const [cx0, cy0] = mapMain(
                                         x + 0.5,
                                         y + 0.5,
-                                        internalW,
-                                        internalH,
                                     );
                                     const r = radiusFromCenter(cx0, cy0);
                                     const mask = radialWeight(r);
@@ -510,6 +513,7 @@
                         { step: 1, label: "Pass 6/6 (step=1)" },
                     ];
 
+                    const map = createPixelMapper(internalW, internalH);
                     let lastYield = performance.now();
 
                     for (let p = 0; p < passes.length; p++) {
@@ -526,11 +530,9 @@
                             const params = getPaletteParams();
 
                             for (let px = 0; px < internalW; px += step) {
-                                const [cx, cy] = pixelToComplex(
+                                const [cx, cy] = map(
                                     px + step * 0.5,
                                     py + step * 0.5,
-                                    internalW,
-                                    internalH,
                                 );
                                 const r = radiusFromCenter(cx, cy);
                                 const maskBlock = radialWeight(r);
