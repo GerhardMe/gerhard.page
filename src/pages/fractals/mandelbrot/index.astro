@@ -2,7 +2,9 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Mandelbrot Viewer (CPU, Progressive, Supersampled Glow)</title>
+        <title>
+            Mandelbrot Viewer (CPU, Progressive, Supersampled, Circle Cutoff)
+        </title>
         <style>
             html,
             body {
@@ -106,18 +108,29 @@
                     STRENGTH_START: 80,
                 };
 
-                // Radial geometry in the complex plane
-                const R_SET = 2.0; // Mandelbrot "cut" radius
-                const R_MARGIN = 0.25; // extra margin beyond r=2
-                const R_WORLD = R_SET + R_MARGIN; // world extends to ±R_WORLD
-                const R_CLIP = R_SET; // hard cut to black beyond this
-                const R_FADE = 1.8; // start fading here toward R_CLIP
+                // Cutoff circle geometry
+                // Circle centered at (-0.75, 0) with radius 1.5
+                const R_CENTER_X = -0.75;
+                const R_CENTER_Y = 0.0;
+                const R_CLIP = 1.5; // hard cutoff radius
+                const R_MARGIN = 0.25; // extra visible margin around circle
+                const R_WORLD = R_CLIP + R_MARGIN; // vertical world half-span
 
+                function radiusFromCenter(cx, cy) {
+                    const dx = cx - R_CENTER_X;
+                    const dy = cy - R_CENTER_Y;
+                    return Math.sqrt(dx * dx + dy * dy);
+                }
+
+                function insideClip(cx, cy) {
+                    const dx = cx - R_CENTER_X;
+                    const dy = cy - R_CENTER_Y;
+                    return dx * dx + dy * dy <= R_CLIP * R_CLIP;
+                }
+
+                // No blur: fully on inside the circle, fully black outside
                 function radialWeight(r) {
-                    if (r >= R_CLIP) return 0;
-                    if (r <= R_FADE) return 1;
-                    const t = (R_CLIP - r) / (R_CLIP - R_FADE); // 0..1
-                    return t < 0 ? 0 : t > 1 ? 1 : t;
+                    return r <= R_CLIP ? 1 : 0;
                 }
 
                 const canvas = document.getElementById("view");
@@ -258,13 +271,14 @@
                     return mu;
                 }
 
-                // Map pixel to complex plane, centered at origin,
-                // world extends to ±R_WORLD in both axes (with aspect-aware scaling).
+                // Map pixel to complex plane.
+                // Vertical span is [-R_WORLD, +R_WORLD]
+                // Horizontal span is centered at R_CENTER_X, with same aspect.
                 function pixelToComplex(px, py, W, H) {
                     const aspect = W / H;
-                    const worldH = 2 * R_WORLD; // -R_WORLD .. +R_WORLD
+                    const worldH = 2 * R_WORLD; // -R_WORLD .. +R_WORLD in y
                     const worldW = worldH * aspect;
-                    const x0 = -worldW / 2;
+                    const x0 = R_CENTER_X - worldW / 2;
                     const y0 = -R_WORLD;
 
                     const cx = x0 + (px / W) * worldW;
@@ -366,6 +380,7 @@
                 // compute at 2× resolution, but downsample and paint each
                 // destination row as soon as both source rows are available,
                 // so you see the supersampled image creep in gradually.
+                // Palette is read per dest row so sliders act live while rendering.
                 async function supersamplePass() {
                     const upscale = 2;
                     const hiW = internalW * upscale;
@@ -374,29 +389,20 @@
 
                     const hiIter = new Float32Array(hiW * hiH);
 
-                    // World mapping for hi-res, same origin-centered disc + margin.
-                    const aspect = hiW / hiH;
-                    const worldH = 2 * R_WORLD;
-                    const worldW = worldH * aspect;
-                    const x0 = -worldW / 2;
-                    const y0 = -R_WORLD;
-
-                    const params = getPaletteParams();
                     let lastYield = performance.now();
 
                     // High-res iteration
                     for (let py = 0; py < hiH; py++) {
-                        const v = py / hiH;
-                        const cy = y0 + v * worldH;
-
                         for (let px = 0; px < hiW; px++) {
-                            const u = px / hiW;
-                            const cx = x0 + u * worldW;
-                            const r2 = cx * cx + cy * cy;
-                            const t =
-                                r2 > R_CLIP * R_CLIP
-                                    ? maxIter // outside r=2 -> force black
-                                    : mandelIterations(cx, cy, maxIter);
+                            const [cx, cy] = pixelToComplex(
+                                px + 0.5,
+                                py + 0.5,
+                                hiW,
+                                hiH,
+                            );
+                            const t = insideClip(cx, cy)
+                                ? mandelIterations(cx, cy, maxIter)
+                                : maxIter; // outside circle -> force black
                             hiIter[py * hiW + px] = t;
                         }
 
@@ -409,18 +415,21 @@
                                 const yy0 = y * upscale;
                                 const yy1 = Math.min(yy0 + 1, hiH - 1);
 
+                                // Read current palette *now* for this output row
+                                const params = getPaletteParams();
+
                                 for (let x = 0; x < internalW; x++) {
                                     const xx0 = x * upscale;
                                     const xx1 = Math.min(xx0 + 1, hiW - 1);
 
-                                    // Compute complex coordinate at dest pixel center
+                                    // Complex coordinate at dest pixel center
                                     const [cx0, cy0] = pixelToComplex(
                                         x + 0.5,
                                         y + 0.5,
                                         internalW,
                                         internalH,
                                     );
-                                    const r = Math.sqrt(cx0 * cx0 + cy0 * cy0);
+                                    const r = radiusFromCenter(cx0, cy0);
                                     const mask = radialWeight(r);
 
                                     let tAvg;
@@ -523,7 +532,7 @@
                                     internalW,
                                     internalH,
                                 );
-                                const r = Math.sqrt(cx * cx + cy * cy);
+                                const r = radiusFromCenter(cx, cy);
                                 const maskBlock = radialWeight(r);
 
                                 let tBlock;
