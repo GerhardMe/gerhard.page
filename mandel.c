@@ -1,3 +1,4 @@
+// mandel.c
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -16,6 +17,7 @@ void init_framebuffer(int w, int h)
         free(framebuffer);
         framebuffer = 0;
     }
+
     fbW = w;
     fbH = h;
     framebuffer = (uint8_t *)malloc((size_t)fbW * (size_t)fbH * 4);
@@ -73,93 +75,192 @@ static double mandel(double cx, double cy, int maxIter)
     return i + 1.0 - log(log(mag)) / log(2.0);
 }
 
-// Grayscale + supersampling
-void render_frame(
-    double cx, double cy, double scale,
-    int maxIter,
-    int samplesPerDim,
-    double circx, double circy, double circr)
+// Derive maxIter from zoom
+static int auto_max_iter(double zoom)
+{
+    const int minIter = 64;
+    const int maxIter = 4000;
+    const double iterPerDoubling = 20.0;
+
+    if (zoom < 1.0)
+        zoom = 1.0;
+
+    double doublings = log(zoom) / log(2.0);
+    double extra = doublings * iterPerDoubling;
+
+    int it = (int)(minIter + extra);
+    if (it < minIter)
+        it = minIter;
+    if (it > maxIter)
+        it = maxIter;
+    return it;
+}
+
+// Render a horizontal band y in [yStart, yEnd).
+// cx, cy : center in complex plane
+// zoom   : zoom factor (1 = base view, >1 zoom in)
+// scale  :
+//    scale >= 1 : block mode, block ~ scale pixels
+//    0 < scale < 1 : AA mode, samplesPerDim ~ 1/scale
+void render_rows(double cx, double cy, double zoom, double scale,
+                 int yStart, int yEnd)
 {
     if (!framebuffer || fbW <= 0 || fbH <= 0)
         return;
-    if (maxIter < 1)
-        maxIter = 1;
-    if (samplesPerDim < 1)
-        samplesPerDim = 1;
 
-    int numSamples = samplesPerDim * samplesPerDim;
+    if (zoom <= 0.0)
+        zoom = 1.0;
+    if (scale <= 0.0)
+        scale = 1.0;
 
-    double aspect = (double)fbW / (double)fbH;
-    double ww = scale * 2.0;
-    double wh = ww / aspect;
+    if (yStart < 0)
+        yStart = 0;
+    if (yEnd > fbH)
+        yEnd = fbH;
+    if (yStart >= yEnd)
+        return;
 
-    double x0 = cx - ww * 0.5;
-    double y0 = cy - wh * 0.5;
+    int minDim = (fbW < fbH) ? fbW : fbH;
+    if (minDim <= 0)
+        return;
 
-    double r2lim = circr * circr;
+    double basePixelSize = 4.0 / (double)minDim;
+    double pixelSize = basePixelSize / zoom;
 
-    for (int j = 0; j < fbH; j++)
+    int maxIter = auto_max_iter(zoom);
+
+    double halfW = 0.5 * (double)fbW;
+    double halfH = 0.5 * (double)fbH;
+
+    if (scale >= 1.0)
     {
-        for (int i = 0; i < fbW; i++)
+        int block = (int)(scale + 0.5);
+        if (block < 1)
+            block = 1;
+
+        for (int j = yStart; j < yEnd; j += block)
         {
-            double uc = (double)i / (double)(fbW - 1);
-            double vc = (double)j / (double)(fbH - 1);
-            double xc = x0 + uc * ww;
-            double yc = y0 + vc * wh;
+            int bh = block;
+            if (j + bh > yEnd)
+                bh = yEnd - j;
 
-            double dx = xc - circx;
-            double dy = yc - circy;
-            size_t idx = ((size_t)j * fbW + i) * 4;
+            double center_j = (double)j + 0.5 * (double)bh;
+            double y = cy + (center_j - halfH) * pixelSize;
 
-            if (dx * dx + dy * dy > r2lim)
+            for (int i = 0; i < fbW; i += block)
             {
-                framebuffer[idx + 0] = 0;
-                framebuffer[idx + 1] = 0;
-                framebuffer[idx + 2] = 0;
-                framebuffer[idx + 3] = 255;
-                continue;
-            }
+                int bw = block;
+                if (i + bw > fbW)
+                    bw = fbW - i;
 
-            double sum = 0.0;
+                double center_i = (double)i + 0.5 * (double)bw;
+                double x = cx + (center_i - halfW) * pixelSize;
 
-            for (int sy = 0; sy < samplesPerDim; sy++)
-            {
-                for (int sx = 0; sx < samplesPerDim; sx++)
+                double t = mandel(x, y, maxIter);
+
+                double n;
+                if (t >= (double)maxIter || t <= 0.0)
                 {
-                    double u = ((double)i + ((double)sx + 0.5) / (double)samplesPerDim) / (double)(fbW - 1);
-                    double v = ((double)j + ((double)sy + 0.5) / (double)samplesPerDim) / (double)(fbH - 1);
+                    n = 0.0;
+                }
+                else
+                {
+                    n = t / (double)maxIter;
+                }
 
-                    double x = x0 + u * ww;
-                    double y = y0 + v * wh;
+                if (n < 0.0)
+                    n = 0.0;
+                if (n > 1.0)
+                    n = 1.0;
 
-                    double t = mandel(x, y, maxIter);
+                uint8_t g = (uint8_t)(n * 255.0 + 0.5);
 
-                    double n;
-                    if (t >= (double)maxIter || t <= 0.0)
+                for (int jj = 0; jj < bh; jj++)
+                {
+                    int ypix = j + jj;
+                    size_t rowBase = (size_t)ypix * fbW;
+                    for (int ii = 0; ii < bw; ii++)
                     {
-                        n = 0.0; // interior -> black
+                        int xpix = i + ii;
+                        size_t idx = (rowBase + (size_t)xpix) * 4;
+                        framebuffer[idx + 0] = g;
+                        framebuffer[idx + 1] = g;
+                        framebuffer[idx + 2] = g;
+                        framebuffer[idx + 3] = 255;
                     }
-                    else
-                    {
-                        n = t / (double)maxIter; // 0..1
-                    }
-
-                    sum += n;
                 }
             }
-
-            double avg = sum / (double)numSamples;
-            if (avg < 0.0)
-                avg = 0.0;
-            if (avg > 1.0)
-                avg = 1.0;
-
-            uint8_t g = (uint8_t)(avg * 255.0 + 0.5);
-
-            framebuffer[idx + 0] = g;
-            framebuffer[idx + 1] = g;
-            framebuffer[idx + 2] = g;
-            framebuffer[idx + 3] = 255;
         }
     }
+    else
+    {
+        double invScale = 1.0 / scale;
+        int samplesPerDim = (int)(invScale + 0.5);
+        if (samplesPerDim < 1)
+            samplesPerDim = 1;
+        const int MAX_SAMPLES_PER_DIM = 8;
+        if (samplesPerDim > MAX_SAMPLES_PER_DIM)
+            samplesPerDim = MAX_SAMPLES_PER_DIM;
+
+        int numSamples = samplesPerDim * samplesPerDim;
+
+        for (int j = yStart; j < yEnd; j++)
+        {
+            double y0 = cy + (((double)j + 0.5) - halfH) * pixelSize;
+
+            for (int i = 0; i < fbW; i++)
+            {
+                double x0 = cx + (((double)i + 0.5) - halfW) * pixelSize;
+
+                double sum = 0.0;
+
+                for (int sy = 0; sy < samplesPerDim; sy++)
+                {
+                    double fy = ((double)sy + 0.5) / (double)samplesPerDim;
+                    double dy = (fy - 0.5) * pixelSize;
+                    double y = y0 + dy;
+
+                    for (int sx = 0; sx < samplesPerDim; sx++)
+                    {
+                        double fx = ((double)sx + 0.5) / (double)samplesPerDim;
+                        double dx = (fx - 0.5) * pixelSize;
+                        double x = x0 + dx;
+
+                        double t = mandel(x, y, maxIter);
+
+                        double n;
+                        if (t >= (double)maxIter || t <= 0.0)
+                        {
+                            n = 0.0;
+                        }
+                        else
+                        {
+                            n = t / (double)maxIter;
+                        }
+
+                        sum += n;
+                    }
+                }
+
+                double avg = sum / (double)numSamples;
+                if (avg < 0.0)
+                    avg = 0.0;
+                if (avg > 1.0)
+                    avg = 1.0;
+
+                uint8_t g = (uint8_t)(avg * 255.0 + 0.5);
+                size_t idx = ((size_t)j * fbW + (size_t)i) * 4;
+                framebuffer[idx + 0] = g;
+                framebuffer[idx + 1] = g;
+                framebuffer[idx + 2] = g;
+                framebuffer[idx + 3] = 255;
+            }
+        }
+    }
+}
+
+// Convenience: full-frame render (used only as a fallback from JS)
+void render_frame(double cx, double cy, double zoom, double scale)
+{
+    render_rows(cx, cy, zoom, scale, 0, fbH);
 }

@@ -2,9 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>
-            Mandelbrot WASM (worker, JS pan/zoom, pixel stages, JS palette)
-        </title>
+        <title>Mandelbrot WASM (worker, JS pan/zoom, stages, JS palette)</title>
         <style>
             html,
             body {
@@ -89,15 +87,10 @@
 
                 fc.value = "#00ffff";
 
-                // World view in complex plane
-                let worldCenterX = -0.75;
-                let worldCenterY = 0.0;
-                let worldScale = 1.5;
-
-                // Circle cutoff in world coords
-                const CIRC_X = -0.75;
-                const CIRC_Y = 0.0;
-                const CIRC_R = 1.5;
+                // World in complex plane (WASM: cx, cy, zoom)
+                let centerX = -0.75;
+                let centerY = 0.0;
+                let zoom = 1.0; // 1 = base view (~[-2,2] across min dimension)
 
                 let fullW = 0;
                 let fullH = 0;
@@ -107,7 +100,7 @@
                 const baseCtx = baseCanvas.getContext("2d");
                 let baseValid = false;
 
-                // Offscreen buffer for each stage
+                // Offscreen buffer for each frame
                 const bufCanvas = document.createElement("canvas");
                 const bufCtx = bufCanvas.getContext("2d");
 
@@ -120,7 +113,7 @@
                 let worker = null;
                 let workerReady = false;
                 let nextJobId = 1;
-                let currentJobId = null; // latest job we care about
+                let currentJobId = null; // last job we care about
                 let jobInFlight = false;
 
                 // Stored grayscale for palette-only recolor
@@ -128,17 +121,16 @@
                 let lastFbW = 0;
                 let lastFbH = 0;
 
-                const MAX_ITER = 500;
-
+                // Rendering stages: coarse → fine → AA (<1 => AA)
                 const STAGES = [
-                    { pixelSize: 64, samplesDim: 1 },
-                    { pixelSize: 32, samplesDim: 1 },
-                    { pixelSize: 16, samplesDim: 1 },
-                    { pixelSize: 8, samplesDim: 1 },
-                    { pixelSize: 4, samplesDim: 1 },
-                    { pixelSize: 2, samplesDim: 1 },
-                    { pixelSize: 1, samplesDim: 1 },
-                    { pixelSize: 1, samplesDim: 4 },
+                    { scale: 64 },
+                    { scale: 32 },
+                    { scale: 16 },
+                    { scale: 8 },
+                    { scale: 4 },
+                    { scale: 2 },
+                    { scale: 1 },
+                    { scale: 0.25 },
                 ];
 
                 let currentStage = -1;
@@ -191,18 +183,38 @@
                     return minW + sInv * (maxW - minW);
                 }
 
+                // Mapping must match WASM:
+                // basePixelSize = 4 / minDim; pixelSize = basePixelSize / zoom
+                // x = cx + ((i+0.5)-halfW)*pixelSize
+                // y = cy + ((j+0.5)-halfH)*pixelSize
                 function currentWorldParams() {
-                    const aspect = fullW / fullH;
-                    const worldWidth = worldScale * 2;
-                    const worldHeight = worldWidth / aspect;
-                    const worldX0 = worldCenterX - worldWidth / 2;
-                    const worldY0 = worldCenterY - worldHeight / 2;
+                    if (!fullW || !fullH) {
+                        return {
+                            worldWidth: 0,
+                            worldHeight: 0,
+                            worldX0: centerX,
+                            worldY0: centerY,
+                        };
+                    }
+                    const minDim = Math.min(fullW, fullH);
+                    const basePixelSize = 4.0 / minDim;
+                    const pixelSize = basePixelSize / zoom;
+
+                    const worldWidth = pixelSize * fullW;
+                    const worldHeight = pixelSize * fullH;
+
+                    const worldX0 = centerX - worldWidth / 2;
+                    const worldY0 = centerY - worldHeight / 2;
+
                     return { worldWidth, worldHeight, worldX0, worldY0 };
                 }
 
                 function screenToWorld(sx, sy) {
                     const { worldWidth, worldHeight, worldX0, worldY0 } =
                         currentWorldParams();
+                    if (!fullW || !fullH) {
+                        return { cx: centerX, cy: centerY };
+                    }
                     const u = sx / fullW;
                     const v = sy / fullH;
                     const cx = worldX0 + u * worldWidth;
@@ -247,9 +259,17 @@
                     interactionActive = true;
                     lastInteractionTime = performance.now();
 
-                    // Abort current staged render and ignore current worker job
+                    // Reset staging
                     stagePending = false;
                     currentStage = -1;
+
+                    // Cancel current worker job if any
+                    if (workerReady && currentJobId != null) {
+                        worker.postMessage({
+                            type: "cancel",
+                            jobId: currentJobId,
+                        });
+                    }
                     currentJobId = null;
                     jobInFlight = false;
                 }
@@ -341,9 +361,8 @@
                     canvas.setPointerCapture(e.pointerId);
                     panStartX = e.clientX;
                     panStartY = e.clientY;
-                    panStartCenterX = worldCenterX;
-                    panStartCenterY = worldCenterY;
-                    // no markInteraction here
+                    panStartCenterX = centerX;
+                    panStartCenterY = centerY;
                 });
 
                 canvas.addEventListener("pointermove", (e) => {
@@ -353,12 +372,14 @@
 
                     const { worldWidth, worldHeight } = currentWorldParams();
 
-                    worldCenterX =
-                        panStartCenterX -
-                        (dx / (window.innerWidth || 1)) * worldWidth;
-                    worldCenterY =
-                        panStartCenterY -
-                        (dy / (window.innerHeight || 1)) * worldHeight;
+                    if (worldWidth && worldHeight) {
+                        centerX =
+                            panStartCenterX -
+                            (dx / (window.innerWidth || 1)) * worldWidth;
+                        centerY =
+                            panStartCenterY -
+                            (dy / (window.innerHeight || 1)) * worldHeight;
+                    }
 
                     viewOffsetX = dx;
                     viewOffsetY = dy;
@@ -392,11 +413,11 @@
 
                         const delta = -e.deltaY;
                         const zoomFactor = Math.exp(delta * 0.001);
-                        worldScale /= zoomFactor;
+                        zoom *= zoomFactor;
 
                         const after = screenToWorld(sx, sy);
-                        worldCenterX += before.cx - after.cx;
-                        worldCenterY += before.cy - after.cy;
+                        centerX += before.cx - after.cx;
+                        centerY += before.cy - after.cy;
 
                         const oldScale = viewScale;
                         const newScale = viewScale * zoomFactor;
@@ -443,40 +464,35 @@
 
                 function startWorkerJob(stageIndex) {
                     if (!workerReady) return;
-
                     const stage = STAGES[stageIndex];
-                    const pixelSize = stage.pixelSize;
-                    const samplesDim = stage.samplesDim;
+                    const scale = stage.scale;
 
-                    const baseFactor = 1 / pixelSize;
-                    const fbW = Math.max(1, Math.floor(fullW * baseFactor));
-                    const fbH = Math.max(1, Math.floor(fullH * baseFactor));
+                    const fbW = fullW;
+                    const fbH = fullH;
+                    if (!fbW || !fbH) return;
 
                     const jobId = nextJobId++;
                     currentJobId = jobId;
                     jobInFlight = true;
 
-                    const cxSnap = worldCenterX;
-                    const cySnap = worldCenterY;
-                    const scaleSnap = worldScale;
+                    const cxSnap = centerX;
+                    const cySnap = centerY;
+                    const zoomSnap = zoom;
+                    const scaleSnap = scale;
 
                     worker.postMessage({
                         type: "render",
                         jobId,
                         fbW,
                         fbH,
-                        worldCenterX: cxSnap,
-                        worldCenterY: cySnap,
-                        worldScale: scaleSnap,
-                        maxIter: MAX_ITER,
-                        samplesDim,
-                        circX: CIRC_X,
-                        circY: CIRC_Y,
-                        circR: CIRC_R,
+                        cx: cxSnap,
+                        cy: cySnap,
+                        zoom: zoomSnap,
+                        scale: scaleSnap,
                     });
 
                     setStatus(
-                        `sending stage=${stageIndex} pixelSize=${pixelSize} fb=${fbW}x${fbH}`,
+                        `sending stage=${stageIndex} scale=${scaleSnap} fb=${fbW}x${fbH}`,
                     );
                 }
 
@@ -486,25 +502,14 @@
                         fbW,
                         fbH,
                         gray,
-                        worldCenterX: jobCx,
-                        worldCenterY: jobCy,
-                        worldScale: jobScale,
+                        cx: jobCx,
+                        cy: jobCy,
+                        zoom: jobZoom,
+                        scale: jobScale,
                     } = msg;
 
-                    const EPS = 1e-12;
-
-                    // stale jobId → ignore and clear inFlight
+                    // If we have started a newer job since this one, ignore
                     if (currentJobId === null || jobId !== currentJobId) {
-                        jobInFlight = false;
-                        return;
-                    }
-
-                    // viewbox mismatch → ignore and clear inFlight
-                    if (
-                        Math.abs(jobCx - worldCenterX) > EPS ||
-                        Math.abs(jobCy - worldCenterY) > EPS ||
-                        Math.abs(jobScale - worldScale) > EPS
-                    ) {
                         jobInFlight = false;
                         return;
                     }
@@ -543,7 +548,9 @@
                     baseCtx.drawImage(canvas, 0, 0);
                     baseValid = true;
 
-                    setStatus(`done stage=${currentStage} fb=${fbW}x${fbH}`);
+                    setStatus(
+                        `done stage=${currentStage} fb=${fbW}x${fbH} scale=${jobScale}`,
+                    );
 
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
@@ -556,7 +563,7 @@
                 function loop() {
                     const now = performance.now();
 
-                    // Debounced start: only when pointer is up and no input for INTERACTION_SETTLE_MS
+                    // After interaction settles, schedule staged render
                     if (
                         interactionActive &&
                         !isPanning &&
@@ -564,8 +571,7 @@
                         currentStage === -1 &&
                         workerReady
                     ) {
-                        // we're committing this viewbox; bake current screen into baseCanvas
-                        // so there is no visual jump when we leave interactive mode
+                        // Keep last interactive frame as base to avoid jump
                         try {
                             const snapshot = ctx.getImageData(
                                 0,
@@ -577,9 +583,7 @@
                             baseCanvas.height = fullH;
                             baseCtx.putImageData(snapshot, 0, 0);
                             baseValid = true;
-                        } catch (_) {
-                            // ignore; we'll just reuse previous baseCanvas
-                        }
+                        } catch (_) {}
 
                         interactionActive = false;
                         viewScale = 1;
