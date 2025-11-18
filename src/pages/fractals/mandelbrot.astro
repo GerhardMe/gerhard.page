@@ -45,8 +45,9 @@ import Layout from "../../layouts/main.astro";
 </Layout>
 
 <style>
-    html,
-    body {
+    /* Make sure this page uses a clean, full viewport baseline */
+    :global(html),
+    :global(body) {
         margin: 0;
         padding: 0;
         width: 100%;
@@ -57,19 +58,42 @@ import Layout from "../../layouts/main.astro";
         overflow: hidden;
     }
 
-    #app {
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
+    /* Cancel any "mobile zoom" added by the Layout on small screens */
+    @media (max-width: 900px) {
+        :global(body) {
+            transform: none !important;
+            -webkit-transform: none !important;
+            -moz-transform: none !important;
+            zoom: 1 !important;
+        }
+
+        /* If the layout wraps content in a main/container, kill its scale too */
+        :global(body > *),
+        :global(main),
+        :global(#app) {
+            transform: none !important;
+            max-width: none !important;
+        }
     }
 
-    #canvasWrapper {
+    /* Own the viewport with this app */
+    :global(#app) {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+    }
+
+    :global(#canvasWrapper) {
         position: relative;
         flex: 1 1 auto;
         overflow: hidden;
+        width: 100vw;
+        height: calc(100vh - 26px); /* leave space for status bar */
     }
 
-    canvas {
+    :global(canvas#view) {
         width: 100%;
         height: 100%;
         display: block;
@@ -77,7 +101,7 @@ import Layout from "../../layouts/main.astro";
         cursor: grab;
     }
 
-    canvas:active {
+    :global(canvas#view:active) {
         cursor: grabbing;
     }
 
@@ -143,7 +167,7 @@ import Layout from "../../layouts/main.astro";
     }
 
     /* Bottom status bar */
-    #statusBar {
+    :global(#statusBar) {
         flex: 0 0 auto;
         height: 26px;
         padding: 4px 8px;
@@ -176,19 +200,5 @@ import Layout from "../../layouts/main.astro";
         flex: 1 1 auto;
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-
-    /* Neutralise any mobile/hi-DPI scaling from the Layout on this page */
-    @media (min-resolution: 2dppx),
-        (-webkit-min-device-pixel-ratio: 2),
-        (max-width: 900px) {
-        :global(html),
-        :global(body),
-        :global(main),
-        :global(#app) {
-            zoom: 1 !important;
-            transform: none !important;
-            font-size: 16px !important;
-        }
     }
 </style>
