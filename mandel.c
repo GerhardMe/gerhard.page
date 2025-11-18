@@ -75,25 +75,29 @@ static double mandel(double cx, double cy, int maxIter)
     return i + 1.0 - log(log(mag)) / log(2.0);
 }
 
-// Derive maxIter from zoom
+// Derive maxIter from zoom (softer, non-insane scaling)
 static int auto_max_iter(double zoom)
 {
-    const int minIter = 64;
-    const int maxIter = 4000;
-    const double iterPerDoubling = 20.0;
+    const int minIter = 80;   // base detail at full view
+    const int maxIter = 6000; // hard cap
+    const double K = 50.0;    // strength
+    const double P = 1.25;    // exponent on log10(zoom)
 
     if (zoom < 1.0)
         zoom = 1.0;
 
-    double doublings = log(zoom) / log(2.0);
-    double extra = doublings * iterPerDoubling;
+    double logz = log10(zoom);
+    if (logz < 1.0)
+        logz = 1.0;
 
-    int it = (int)(minIter + extra);
+    double it = (double)minIter + K * pow(logz, P);
+
     if (it < minIter)
         it = minIter;
     if (it > maxIter)
         it = maxIter;
-    return it;
+
+    return (int)(it + 0.5);
 }
 
 // Map iteration value to [0,1] including interior handling.
