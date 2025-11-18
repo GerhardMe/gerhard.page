@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <title>
-            Mandelbrot WASM (JS pan/zoom, pixel-size stages, JS palette)
+            Mandelbrot WASM (worker, JS pan/zoom, pixel stages, JS palette)
         </title>
         <style>
             html,
@@ -75,11 +75,8 @@
                 Glow
                 <input type="range" id="bw" min="0" max="100" value="80" />
             </label>
-            <div id="status">WASM loading…</div>
+            <div id="status">WASM worker loading…</div>
         </div>
-
-        <!-- Astro-friendly: wasm JS loader is marked inline -->
-        <script is:inline src="/mandel.js"></script>
 
         <script>
             (function () {
@@ -110,7 +107,7 @@
                 const baseCtx = baseCanvas.getContext("2d");
                 let baseValid = false;
 
-                // Offscreen buffer for each WASM stage
+                // Offscreen buffer for each stage
                 const bufCanvas = document.createElement("canvas");
                 const bufCtx = bufCanvas.getContext("2d");
 
@@ -119,25 +116,20 @@
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
-                // WASM
-                let wasmReady = false;
-                let initFB = null;
-                let getPtr = null;
-                let renderFrame = null;
+                // Worker / job state
+                let worker = null;
+                let workerReady = false;
+                let nextJobId = 1;
+                let currentJobId = null; // latest job we care about
+                let jobInFlight = false;
 
-                let fbW = 0;
-                let fbH = 0;
-                let fbPtr = 0;
-                let fbView = null;
-
-                // Store last grayscale stage for palette-only recolor
+                // Stored grayscale for palette-only recolor
                 let lastGray = null;
                 let lastFbW = 0;
                 let lastFbH = 0;
 
                 const MAX_ITER = 500;
 
-                // Progressive pixel sizes:
                 const STAGES = [
                     { pixelSize: 64, samplesDim: 1 },
                     { pixelSize: 32, samplesDim: 1 },
@@ -155,7 +147,7 @@
                 // Interaction timing
                 let interactionActive = false;
                 let lastInteractionTime = 0;
-                const INTERACTION_SETTLE_MS = 250;
+                const INTERACTION_SETTLE_MS = 200; // debounce
 
                 // Panning state
                 let isPanning = false;
@@ -171,8 +163,8 @@
                             : interactionActive
                               ? "interactive"
                               : "idle";
-                    status.textContent = `${msg} | mode=${mode} | WASM=${
-                        wasmReady ? "on" : "off"
+                    status.textContent = `${msg} | mode=${mode} | worker=${
+                        workerReady ? "on" : "off"
                     }`;
                 }
 
@@ -222,7 +214,6 @@
                     const cssW = window.innerWidth;
                     const cssH = window.innerHeight;
 
-                    // 1:1 mapping between CSS pixels and canvas pixels
                     canvas.style.width = cssW + "px";
                     canvas.style.height = cssH + "px";
 
@@ -240,9 +231,9 @@
                     viewOffsetX = 0;
                     viewOffsetY = 0;
 
-                    if (wasmReady) {
-                        fbView = null;
-                        lastGray = null;
+                    lastGray = null;
+
+                    if (workerReady) {
                         requestFullRender();
                     }
                 }
@@ -255,13 +246,16 @@
                 function markInteraction() {
                     interactionActive = true;
                     lastInteractionTime = performance.now();
-                    // abort current staged render immediately
+
+                    // Abort current staged render and ignore current worker job
                     stagePending = false;
                     currentStage = -1;
+                    currentJobId = null;
+                    jobInFlight = false;
                 }
 
                 function requestFullRender() {
-                    if (!wasmReady) return;
+                    if (!workerReady) return;
                     currentStage = 0;
                     stagePending = true;
                 }
@@ -305,13 +299,11 @@
 
                     const colored = colorizeGray(lastGray, lastFbW, lastFbH);
 
-                    // update bufCanvas
                     bufCanvas.width = lastFbW;
                     bufCanvas.height = lastFbH;
                     const img = new ImageData(colored, lastFbW, lastFbH);
                     bufCtx.putImageData(img, 0, 0);
 
-                    // update baseCanvas at full screen size
                     baseCanvas.width = fullW;
                     baseCanvas.height = fullH;
                     baseCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -329,7 +321,6 @@
                     );
                     baseValid = true;
 
-                    // draw to visible canvas respecting current view transform
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                     ctx.clearRect(0, 0, fullW, fullH);
                     ctx.setTransform(
@@ -352,7 +343,7 @@
                     panStartY = e.clientY;
                     panStartCenterX = worldCenterX;
                     panStartCenterY = worldCenterY;
-                    markInteraction();
+                    // no markInteraction here
                 });
 
                 canvas.addEventListener("pointermove", (e) => {
@@ -422,12 +413,8 @@
                 );
 
                 // Palette changes: JS recolor only, no new WASM
-                fc.addEventListener("input", () => {
-                    applyPaletteToLastGray();
-                });
-                bw.addEventListener("input", () => {
-                    applyPaletteToLastGray();
-                });
+                fc.addEventListener("input", applyPaletteToLastGray);
+                bw.addEventListener("input", applyPaletteToLastGray);
 
                 function drawInteractiveFrame() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -454,80 +441,88 @@
                     ctx.drawImage(baseCanvas, 0, 0);
                 }
 
-                function runStage(stageIndex) {
-                    if (
-                        !wasmReady ||
-                        stageIndex < 0 ||
-                        stageIndex >= STAGES.length
-                    ) {
-                        currentStage = -1;
-                        stagePending = false;
-                        return;
-                    }
+                function startWorkerJob(stageIndex) {
+                    if (!workerReady) return;
 
                     const stage = STAGES[stageIndex];
                     const pixelSize = stage.pixelSize;
                     const samplesDim = stage.samplesDim;
 
                     const baseFactor = 1 / pixelSize;
-                    let targetW = Math.max(1, Math.floor(fullW * baseFactor));
-                    let targetH = Math.max(1, Math.floor(fullH * baseFactor));
+                    const fbW = Math.max(1, Math.floor(fullW * baseFactor));
+                    const fbH = Math.max(1, Math.floor(fullH * baseFactor));
 
-                    fbW = targetW;
-                    fbH = targetH;
+                    const jobId = nextJobId++;
+                    currentJobId = jobId;
+                    jobInFlight = true;
 
-                    // Alloc framebuffer in WASM
-                    initFB(fbW, fbH);
-                    fbPtr = getPtr();
+                    const cxSnap = worldCenterX;
+                    const cySnap = worldCenterY;
+                    const scaleSnap = worldScale;
 
-                    if (!Module.HEAPU8 || !Module.HEAPU8.buffer) {
-                        setStatus("WASM: no HEAPU8");
-                        fbView = null;
-                        currentStage = -1;
-                        stagePending = false;
+                    worker.postMessage({
+                        type: "render",
+                        jobId,
+                        fbW,
+                        fbH,
+                        worldCenterX: cxSnap,
+                        worldCenterY: cySnap,
+                        worldScale: scaleSnap,
+                        maxIter: MAX_ITER,
+                        samplesDim,
+                        circX: CIRC_X,
+                        circY: CIRC_Y,
+                        circR: CIRC_R,
+                    });
+
+                    setStatus(
+                        `sending stage=${stageIndex} pixelSize=${pixelSize} fb=${fbW}x${fbH}`,
+                    );
+                }
+
+                function handleWorkerFrame(msg) {
+                    const {
+                        jobId,
+                        fbW,
+                        fbH,
+                        gray,
+                        worldCenterX: jobCx,
+                        worldCenterY: jobCy,
+                        worldScale: jobScale,
+                    } = msg;
+
+                    const EPS = 1e-12;
+
+                    // stale jobId → ignore and clear inFlight
+                    if (currentJobId === null || jobId !== currentJobId) {
+                        jobInFlight = false;
                         return;
                     }
 
-                    fbView = new Uint8ClampedArray(
-                        Module.HEAPU8.buffer,
-                        fbPtr,
-                        fbW * fbH * 4,
-                    );
-
-                    // All stages use same iteration count
-                    renderFrame(
-                        worldCenterX,
-                        worldCenterY,
-                        worldScale,
-                        MAX_ITER,
-                        samplesDim,
-                        CIRC_X,
-                        CIRC_Y,
-                        CIRC_R,
-                    );
-
-                    // Extract grayscale
-                    const gray = new Uint8Array(fbW * fbH);
-                    for (let i = 0, j = 0; i < gray.length; i++, j += 4) {
-                        gray[i] = fbView[j];
+                    // viewbox mismatch → ignore and clear inFlight
+                    if (
+                        Math.abs(jobCx - worldCenterX) > EPS ||
+                        Math.abs(jobCy - worldCenterY) > EPS ||
+                        Math.abs(jobScale - worldScale) > EPS
+                    ) {
+                        jobInFlight = false;
+                        return;
                     }
 
-                    // store for palette-only recolor
-                    lastGray = gray;
+                    jobInFlight = false;
+
+                    // Store grayscale for palette-only recolor
+                    lastGray = new Uint8Array(gray);
                     lastFbW = fbW;
                     lastFbH = fbH;
 
-                    // Colorize with current palette
-                    const colored = colorizeGray(gray, fbW, fbH);
+                    const colored = colorizeGray(lastGray, fbW, fbH);
 
-                    // Put into temporary canvas
                     bufCanvas.width = fbW;
                     bufCanvas.height = fbH;
-
                     const img = new ImageData(colored, fbW, fbH);
                     bufCtx.putImageData(img, 0, 0);
 
-                    // Scale to screen
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                     ctx.clearRect(0, 0, fullW, fullH);
                     ctx.drawImage(
@@ -542,31 +537,50 @@
                         fullH,
                     );
 
-                    // Update baseCanvas for panning/zooming
                     baseCanvas.width = fullW;
                     baseCanvas.height = fullH;
                     baseCtx.clearRect(0, 0, fullW, fullH);
                     baseCtx.drawImage(canvas, 0, 0);
                     baseValid = true;
 
-                    setStatus(
-                        `stage=${stageIndex} pixelSize=${pixelSize} fb=${fbW}x${fbH}`,
-                    );
+                    setStatus(`done stage=${currentStage} fb=${fbW}x${fbH}`);
 
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
-                    if (!stagePending) currentStage = -1;
+                    if (!stagePending) {
+                        currentStage = -1;
+                        setStatus("idle");
+                    }
                 }
 
                 function loop() {
                     const now = performance.now();
 
-                    // When user stops interacting, schedule new staged render
+                    // Debounced start: only when pointer is up and no input for INTERACTION_SETTLE_MS
                     if (
                         interactionActive &&
+                        !isPanning &&
                         now - lastInteractionTime > INTERACTION_SETTLE_MS &&
-                        currentStage === -1
+                        currentStage === -1 &&
+                        workerReady
                     ) {
+                        // we're committing this viewbox; bake current screen into baseCanvas
+                        // so there is no visual jump when we leave interactive mode
+                        try {
+                            const snapshot = ctx.getImageData(
+                                0,
+                                0,
+                                fullW,
+                                fullH,
+                            );
+                            baseCanvas.width = fullW;
+                            baseCanvas.height = fullH;
+                            baseCtx.putImageData(snapshot, 0, 0);
+                            baseValid = true;
+                        } catch (_) {
+                            // ignore; we'll just reuse previous baseCanvas
+                        }
+
                         interactionActive = false;
                         viewScale = 1;
                         viewOffsetX = 0;
@@ -576,8 +590,8 @@
 
                     if (interactionActive) {
                         drawInteractiveFrame();
-                    } else if (stagePending) {
-                        runStage(currentStage);
+                    } else if (stagePending && !jobInFlight) {
+                        startWorkerJob(currentStage);
                     } else {
                         drawStableBase();
                     }
@@ -585,40 +599,36 @@
                     requestAnimationFrame(loop);
                 }
 
-                function initAfterWasm() {
-                    initFB = Module.cwrap("init_framebuffer", null, [
-                        "number",
-                        "number",
-                    ]);
-                    getPtr = Module.cwrap("get_framebuffer_ptr", "number", []);
-                    renderFrame = Module.cwrap("render_frame", null, [
-                        "number",
-                        "number",
-                        "number", // cx, cy, scale
-                        "number", // maxIter
-                        "number", // samplesPerDim
-                        "number",
-                        "number",
-                        "number", // circx, circy, circr
-                    ]);
+                function initWorker() {
+                    worker = new Worker("/mandel-worker.js");
+                    worker.onmessage = (e) => {
+                        const msg = e.data;
+                        if (msg.type === "ready") {
+                            workerReady = true;
+                            setStatus("worker ready");
+                            resize();
+                            requestFullRender();
+                            return;
+                        }
+                        if (msg.type === "error") {
+                            jobInFlight = false;
+                            stagePending = false;
+                            currentStage = -1;
+                            setStatus("worker error: " + msg.message);
+                            return;
+                        }
+                        if (msg.type === "frame") {
+                            handleWorkerFrame(msg);
+                        }
+                    };
+                }
 
-                    wasmReady = true;
-                    setStatus("WASM ready");
-
-                    resize();
-                    requestFullRender();
+                function init() {
+                    initWorker();
                     loop();
                 }
 
-                if (typeof Module === "undefined") {
-                    window.Module = {};
-                }
-                Module = Module || {};
-                Module.onRuntimeInitialized = initAfterWasm;
-
-                if (Module.calledRun) {
-                    initAfterWasm();
-                }
+                init();
             })();
         </script>
     </body>
