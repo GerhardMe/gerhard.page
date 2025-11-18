@@ -2,9 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>
-            Mandelbrot Viewer (CPU, Progressive, Supersampled, Circle Cutoff)
-        </title>
+        <title>Mandelbrot WASM (JS pan/zoom + grayscale + JS palette)</title>
         <style>
             html,
             body {
@@ -14,52 +12,36 @@
                 height: 100%;
                 background: #000;
                 color: #eee;
-                font-family:
-                    system-ui,
-                    -apple-system,
-                    sans-serif;
+                font-family: system-ui, sans-serif;
                 overflow: hidden;
             }
-
-            #wrapper {
-                position: fixed;
-                inset: 0;
-                overflow: hidden;
-                background: #000;
-            }
-
             canvas {
-                display: block;
                 width: 100%;
                 height: 100%;
+                display: block;
                 touch-action: none;
                 cursor: grab;
             }
-
             canvas:active {
                 cursor: grabbing;
             }
-
             #controls {
                 position: fixed;
                 top: 10px;
                 left: 10px;
-                padding: 8px 10px;
-                background: rgba(0, 0, 0, 0.8);
+                padding: 6px 8px;
+                background: rgba(0, 0, 0, 0.75);
                 border-radius: 6px;
                 font-size: 12px;
-                line-height: 1.4;
                 z-index: 10;
                 user-select: none;
             }
-
             #controls label {
                 display: flex;
                 align-items: center;
                 gap: 4px;
                 margin-bottom: 4px;
             }
-
             #controls input[type="color"] {
                 width: 20px;
                 height: 20px;
@@ -67,11 +49,9 @@
                 border: none;
                 background: transparent;
             }
-
             #controls input[type="range"] {
                 width: 140px;
             }
-
             #status {
                 margin-top: 4px;
                 opacity: 0.7;
@@ -81,157 +61,110 @@
         </style>
     </head>
     <body>
-        <div id="wrapper">
-            <canvas id="view"></canvas>
-        </div>
+        <canvas id="view"></canvas>
 
         <div id="controls">
             <div><strong>Palette</strong></div>
             <label>
-                Fractal color
-                <input type="color" id="fractalColor" />
+                Color
+                <input type="color" id="fc" />
             </label>
             <label>
-                Glow width
-                <input type="range" id="fractalStrength" />
+                Glow
+                <input type="range" id="bw" min="0" max="100" value="80" />
             </label>
-            <div id="status">Initializing…</div>
+            <div id="status">WASM loading…</div>
         </div>
 
+        <!-- Astro: <script src="/mandel.js" is:inline></script> -->
+        <script is:inline src="/mandel.js"></script>
+
+        <!-- Astro: <script is:inline> ... </script> -->
         <script>
             (function () {
-                const CONFIG = {
-                    MAX_ITER: 500,
-                    FRACTAL_COLOR_START: "#00ffff",
-                    STRENGTH_MIN: 0,
-                    STRENGTH_MAX: 100,
-                    STRENGTH_START: 80,
-                };
-
-                // Circle centered at (-0.75, 0) with radius 1.5
-                const R_CENTER_X = -0.75;
-                const R_CENTER_Y = 0.0;
-                const R_CLIP = 1.5; // hard cutoff radius
-
-                function radiusFromCenter(cx, cy) {
-                    const dx = cx - R_CENTER_X;
-                    const dy = cy - R_CENTER_Y;
-                    return Math.sqrt(dx * dx + dy * dy);
-                }
-
-                function insideClip(cx, cy) {
-                    const dx = cx - R_CENTER_X;
-                    const dy = cy - R_CENTER_Y;
-                    return dx * dx + dy * dy <= R_CLIP * R_CLIP;
-                }
-
-                // No blur: fully on inside the circle, fully black outside
-                function radialWeight(r) {
-                    return r <= R_CLIP ? 1 : 0;
-                }
-
-                // Build a mapping from pixel coordinates to complex plane
-                // such that the circle of radius R_CLIP is maximally inscribed.
-                // For aspect >= 1 (wide): circle touches top/bottom.
-                // For aspect < 1 (tall): circle touches left/right.
-                function createPixelMapper(W, H) {
-                    const aspect = W / H;
-                    let R_WORLD;
-                    if (aspect >= 1) {
-                        // wide: vertical limiting, circle hits top/bottom
-                        R_WORLD = R_CLIP;
-                    } else {
-                        // tall: horizontal limiting, circle hits left/right
-                        R_WORLD = R_CLIP / aspect;
-                    }
-                    const worldH = 2 * R_WORLD;
-                    const worldW = worldH * aspect;
-                    const x0 = R_CENTER_X - worldW / 2;
-                    const y0 = -R_WORLD;
-                    return function (px, py) {
-                        const cx = x0 + (px / W) * worldW;
-                        const cy = y0 + (py / H) * worldH;
-                        return [cx, cy];
-                    };
-                }
-
                 const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
-                const deviceDpr = window.devicePixelRatio || 1;
+                const dpr = window.devicePixelRatio || 1;
 
-                const fractalInput = document.getElementById("fractalColor");
-                const fractalStrengthInput =
-                    document.getElementById("fractalStrength");
-                const statusEl = document.getElementById("status");
+                const fc = document.getElementById("fc");
+                const bw = document.getElementById("bw");
+                const status = document.getElementById("status");
 
-                fractalInput.value = CONFIG.FRACTAL_COLOR_START;
-                fractalStrengthInput.min = String(CONFIG.STRENGTH_MIN);
-                fractalStrengthInput.max = String(CONFIG.STRENGTH_MAX);
-                fractalStrengthInput.value = String(CONFIG.STRENGTH_START);
+                fc.value = "#00ffff";
 
-                // Offscreen canvas at screen resolution
-                const dataCanvas = document.createElement("canvas");
-                const dataCtx = dataCanvas.getContext("2d");
+                // World view
+                let worldCenterX = -0.75;
+                let worldCenterY = 0.0;
+                let worldScale = 1.5;
 
-                let width = 0;
-                let height = 0;
-                let internalW = 0;
-                let internalH = 0;
+                const CIRC_X = -0.75;
+                const CIRC_Y = 0.0;
+                const CIRC_R = 1.5;
 
+                let fullW = 0;
+                let fullH = 0;
+
+                // Last high-quality colored frame
+                const baseCanvas = document.createElement("canvas");
+                const baseCtx = baseCanvas.getContext("2d");
+                let baseValid = false;
+
+                // Grayscale buffer (one byte per pixel, 0..255) from final stage
+                let grayBuffer = null;
+                let grayW = 0;
+                let grayH = 0;
+
+                // Buffer canvas for stage output
+                const bufCanvas = document.createElement("canvas");
+                const bufCtx = bufCanvas.getContext("2d");
+
+                // Interactive transform applied to baseCanvas
                 let viewScale = 1;
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
-                const maxIter = CONFIG.MAX_ITER;
-                let rendering = false;
-                let cancelRender = false;
-                let finalReady = false;
+                // WASM API
+                let wasmReady = false;
+                let initFB = null;
+                let getPtr = null;
+                let renderFrame = null;
 
-                let iterations = null; // Float32Array(internalW * internalH)
-                let radialMask = null; // Float32Array(internalW * internalH), 0..1
-                let img = null; // ImageData
-                let imgData = null; // Uint8ClampedArray
+                // WASM framebuffer view (RGBA, grayscale in R/G/B)
+                let fbW = 0;
+                let fbH = 0;
+                let fbPtr = 0;
+                let fbView = null;
+
+                // Stages: factor, iter, samplesPerDim
+                const STAGES = [
+                    { factor: 0.3, iter: 150, samplesDim: 1 }, // quick preview
+                    { factor: 1.0, iter: 500, samplesDim: 2 }, // full-res 2x2 samples/pixel
+                ];
+                const MAX_PIXELS = 5_000_000; // safety cap
+
+                let currentStage = -1;
+                let stagePending = false;
+
+                // Interaction timing
+                let interactionActive = false;
+                let lastInteractionTime = 0;
+                const INTERACTION_SETTLE_MS = 150;
 
                 // Panning
                 let isPanning = false;
                 let panStartX = 0;
                 let panStartY = 0;
-                let panOrigOffsetX = 0;
-                let panOrigOffsetY = 0;
+                let panStartCenterX = 0;
+                let panStartCenterY = 0;
 
-                // Palette scheduling
-                let paletteDirty = false;
-                let paletteRecolorInProgress = false;
-
-                function resize() {
-                    const cssW = window.innerWidth;
-                    const cssH = window.innerHeight;
-
-                    width = Math.floor(cssW * deviceDpr);
-                    height = Math.floor(cssH * deviceDpr);
-                    canvas.width = width;
-                    canvas.height = height;
-                    canvas.style.width = cssW + "px";
-                    canvas.style.height = cssH + "px";
-
-                    internalW = width;
-                    internalH = height;
-                    dataCanvas.width = internalW;
-                    dataCanvas.height = internalH;
-
-                    viewScale = 1;
-                    viewOffsetX = 0;
-                    viewOffsetY = 0;
-
-                    iterations = new Float32Array(internalW * internalH);
-                    radialMask = new Float32Array(internalW * internalH);
-                    for (let i = 0; i < iterations.length; i++) {
-                        iterations[i] = -1;
-                        radialMask[i] = 1;
-                    }
-
-                    img = dataCtx.createImageData(internalW, internalH);
-                    imgData = img.data;
+                function setStatus(msg) {
+                    const mode =
+                        currentStage >= 0
+                            ? `render-stage=${currentStage}`
+                            : interactionActive
+                              ? "interactive"
+                              : "idle";
+                    status.textContent = `${msg} | mode=${mode} | WASM=${wasmReady ? "on" : "off"}`;
                 }
 
                 function hexToRgb(hex) {
@@ -247,427 +180,424 @@
                     };
                 }
 
-                function setStatus(text) {
-                    statusEl.textContent = text;
-                }
-
-                function present() {
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.clearRect(0, 0, width, height);
-
-                    const destW = width * viewScale;
-                    const destH = height * viewScale;
-                    const destX = viewOffsetX;
-                    const destY = viewOffsetY;
-
-                    dataCtx.putImageData(img, 0, 0);
-                    ctx.drawImage(
-                        dataCanvas,
-                        0,
-                        0,
-                        internalW,
-                        internalH,
-                        destX,
-                        destY,
-                        destW,
-                        destH,
-                    );
-                }
-
-                function mandelIterations(cx, cy, maxIterLocal) {
-                    let x = 0;
-                    let y = 0;
-                    let xx = 0;
-                    let yy = 0;
-                    let iter = 0;
-                    while (xx + yy <= 4 && iter < maxIterLocal) {
-                        y = 2 * x * y + cy;
-                        x = xx - yy + cx;
-                        xx = x * x;
-                        yy = y * y;
-                        iter++;
-                    }
-                    if (iter >= maxIterLocal) return maxIterLocal;
-                    const mag = Math.sqrt(xx + yy);
-                    const mu = iter + 1 - Math.log(Math.log(mag)) / Math.log(2);
-                    return mu;
-                }
-
-                // Slider -> band width (how much of norm space is used for glow)
-                // Inverted so "max glow" is at the right end of the slider.
                 function getBandWidth() {
-                    const raw = parseInt(fractalStrengthInput.value, 10) || 0;
-                    const sNorm = Math.min(
-                        1,
-                        Math.max(
-                            0,
-                            (raw - CONFIG.STRENGTH_MIN) /
-                                (CONFIG.STRENGTH_MAX - CONFIG.STRENGTH_MIN ||
-                                    1),
-                        ),
-                    );
-                    const sInv = 1 - sNorm; // invert slider response
+                    const raw = parseInt(bw.value, 10) || 0;
+                    const sNorm = Math.min(1, Math.max(0, raw / 100));
+                    const sInv = 1 - sNorm;
                     const minW = 0.1;
                     const maxW = 0.95;
                     return minW + sInv * (maxW - minW);
                 }
 
-                function getPaletteParams() {
-                    return {
-                        frac: hexToRgb(fractalInput.value),
-                        bandWidth: getBandWidth(),
-                    };
+                function currentWorldParams() {
+                    const aspect = fullW / fullH;
+                    const worldWidth = worldScale * 2;
+                    const worldHeight = worldWidth / aspect;
+                    const worldX0 = worldCenterX - worldWidth / 2;
+                    const worldY0 = worldCenterY - worldHeight / 2;
+                    return { worldWidth, worldHeight, worldX0, worldY0 };
                 }
 
-                // Monotone ramp:
-                // - t >= maxIter (inside or "clipped") -> black
-                // - norm in (0..bandWidth) ramps 0..1
-                // - norm >= bandWidth -> full color
-                function colorForT(t, params) {
-                    if (t <= 0 || t >= maxIter) {
-                        return { r: 0, g: 0, b: 0 };
-                    }
-                    const { frac, bandWidth } = params;
-                    const norm = t / maxIter; // 0..1
-
-                    let w;
-                    if (norm <= 0) {
-                        w = 0;
-                    } else if (norm >= bandWidth) {
-                        w = 1;
-                    } else {
-                        w = norm / bandWidth;
-                    }
-
-                    return {
-                        r: frac.r * w,
-                        g: frac.g * w,
-                        b: frac.b * w,
-                    };
+                function screenToWorld(sx, sy) {
+                    const { worldWidth, worldHeight, worldX0, worldY0 } =
+                        currentWorldParams();
+                    const u = sx / fullW;
+                    const v = sy / fullH;
+                    const cx = worldX0 + u * worldWidth;
+                    const cy = worldY0 + v * worldHeight;
+                    return { cx, cy };
                 }
 
-                // Full recolor with current palette; used for palette changes
-                function recolorFromIterations() {
-                    if (!iterations || !imgData) return;
-                    const params = getPaletteParams();
+                function resize() {
+                    const cssW = window.innerWidth;
+                    const cssH = window.innerHeight;
 
-                    for (let idxPix = 0; idxPix < iterations.length; idxPix++) {
-                        const t = iterations[idxPix];
-                        const mask =
-                            radialMask &&
-                            radialMask.length === iterations.length
-                                ? radialMask[idxPix]
-                                : 1;
-                        const { r, g, b } = colorForT(t, params);
-                        const idx4 = idxPix * 4;
-                        imgData[idx4] = r * mask;
-                        imgData[idx4 + 1] = g * mask;
-                        imgData[idx4 + 2] = b * mask;
-                        imgData[idx4 + 3] = 255;
+                    canvas.style.width = cssW + "px";
+                    canvas.style.height = cssH + "px";
+
+                    canvas.width = Math.floor(cssW * dpr);
+                    canvas.height = Math.floor(cssH * dpr);
+
+                    fullW = canvas.width;
+                    fullH = canvas.height;
+
+                    baseCanvas.width = fullW;
+                    baseCanvas.height = fullH;
+
+                    baseValid = false;
+                    grayBuffer = null;
+                    grayW = grayH = 0;
+
+                    viewScale = 1;
+                    viewOffsetX = 0;
+                    viewOffsetY = 0;
+
+                    if (wasmReady) {
+                        fbView = null;
+                        requestFullRender();
                     }
-                    present();
                 }
 
-                function requestPaletteRecolor() {
-                    paletteDirty = true;
+                window.addEventListener("resize", () => {
+                    resize();
+                    markInteraction();
+                });
+
+                function markInteraction() {
+                    interactionActive = true;
+                    lastInteractionTime = performance.now();
                 }
 
-                // Coalesce palette changes to once per animation frame
-                function paletteLoop() {
-                    if (paletteDirty && !paletteRecolorInProgress) {
-                        paletteDirty = false;
-                        paletteRecolorInProgress = true;
-                        recolorFromIterations();
-                        paletteRecolorInProgress = false;
-                    }
-                    requestAnimationFrame(paletteLoop);
+                function requestFullRender() {
+                    if (!wasmReady) return;
+                    currentStage = 0;
+                    stagePending = true;
                 }
 
-                // Final supersample pass:
-                // compute at 2× resolution, but downsample and paint each
-                // destination row as soon as both source rows are available,
-                // so you see the supersampled image creep in gradually.
-                // Palette is read per dest row so sliders act live while rendering.
-                async function supersamplePass() {
-                    const upscale = 2;
-                    const hiW = internalW * upscale;
-                    const hiH = internalH * upscale;
-                    setStatus(`Pass 7/7 (supersample ${hiW}×${hiH})`);
-
-                    const hiIter = new Float32Array(hiW * hiH);
-
-                    const mapHi = createPixelMapper(hiW, hiH);
-                    const mapMain = createPixelMapper(internalW, internalH);
-
-                    let lastYield = performance.now();
-
-                    // High-res iteration
-                    for (let py = 0; py < hiH; py++) {
-                        for (let px = 0; px < hiW; px++) {
-                            const [cx, cy] = mapHi(px + 0.5, py + 0.5);
-                            const t = insideClip(cx, cy)
-                                ? mandelIterations(cx, cy, maxIter)
-                                : maxIter; // outside circle -> force black
-                            hiIter[py * hiW + px] = t;
-                        }
-
-                        if (cancelRender) return;
-
-                        // Every pair of hi-res rows gives us one dest row.
-                        if (py % upscale === upscale - 1) {
-                            const y = (py - (upscale - 1)) / upscale;
-                            if (y < internalH) {
-                                const yy0 = y * upscale;
-                                const yy1 = Math.min(yy0 + 1, hiH - 1);
-
-                                // Read current palette *now* for this output row
-                                const params = getPaletteParams();
-
-                                for (let x = 0; x < internalW; x++) {
-                                    const xx0 = x * upscale;
-                                    const xx1 = Math.min(xx0 + 1, hiW - 1);
-
-                                    // Complex coordinate at dest pixel center
-                                    const [cx0, cy0] = mapMain(
-                                        x + 0.5,
-                                        y + 0.5,
-                                    );
-                                    const r = radiusFromCenter(cx0, cy0);
-                                    const mask = radialWeight(r);
-
-                                    let tAvg;
-                                    if (mask === 0) {
-                                        tAvg = maxIter;
-                                    } else {
-                                        let sum = 0;
-                                        let count = 0;
-                                        let allInside = true;
-
-                                        const idxs = [
-                                            yy0 * hiW + xx0,
-                                            yy0 * hiW + xx1,
-                                            yy1 * hiW + xx0,
-                                            yy1 * hiW + xx1,
-                                        ];
-
-                                        for (let k = 0; k < 4; k++) {
-                                            const t = hiIter[idxs[k]];
-                                            if (t >= maxIter) continue;
-                                            allInside = false;
-                                            sum += t;
-                                            count++;
-                                        }
-
-                                        if (allInside || count === 0) {
-                                            tAvg = maxIter;
-                                        } else {
-                                            tAvg = sum / count;
-                                        }
-                                    }
-
-                                    const idxPix = y * internalW + x;
-                                    iterations[idxPix] = tAvg;
-                                    radialMask[idxPix] = mask;
-
-                                    const {
-                                        r: cr,
-                                        g: cg,
-                                        b: cb,
-                                    } = colorForT(tAvg, params);
-                                    const idx4 = idxPix * 4;
-                                    imgData[idx4] = cr * mask;
-                                    imgData[idx4 + 1] = cg * mask;
-                                    imgData[idx4 + 2] = cb * mask;
-                                    imgData[idx4 + 3] = 255;
-                                }
-                            }
-                        }
-
-                        const now = performance.now();
-                        if (now - lastYield > 12) {
-                            present();
-                            await new Promise(requestAnimationFrame);
-                            lastYield = performance.now();
-                        }
-                    }
-
-                    present();
-                }
-
-                async function renderProgressive() {
-                    rendering = true;
-                    cancelRender = false;
-                    finalReady = false;
-
-                    for (let i = 0; i < iterations.length; i++) {
-                        iterations[i] = -1;
-                        radialMask[i] = 1;
-                    }
-
-                    const passes = [
-                        { step: 64, label: "Pass 1/6 (step=64)" },
-                        { step: 32, label: "Pass 2/6 (step=32)" },
-                        { step: 16, label: "Pass 3/6 (step=16)" },
-                        { step: 8, label: "Pass 4/6 (step=8)" },
-                        { step: 4, label: "Pass 5/6 (step=4)" },
-                        { step: 1, label: "Pass 6/6 (step=1)" },
-                    ];
-
-                    const map = createPixelMapper(internalW, internalH);
-                    let lastYield = performance.now();
-
-                    for (let p = 0; p < passes.length; p++) {
-                        const { step, label } = passes[p];
-                        if (cancelRender) {
-                            rendering = false;
-                            setStatus("Render cancelled");
-                            present();
-                            return;
-                        }
-                        setStatus(`${label}  [${internalW}×${internalH}]`);
-
-                        for (let py = 0; py < internalH; py += step) {
-                            const params = getPaletteParams();
-
-                            for (let px = 0; px < internalW; px += step) {
-                                const [cx, cy] = map(
-                                    px + step * 0.5,
-                                    py + step * 0.5,
-                                );
-                                const r = radiusFromCenter(cx, cy);
-                                const maskBlock = radialWeight(r);
-
-                                let tBlock;
-                                if (maskBlock === 0) {
-                                    tBlock = maxIter;
-                                } else {
-                                    tBlock = mandelIterations(cx, cy, maxIter);
-                                }
-
-                                for (let sy = 0; sy < step; sy++) {
-                                    const yy = py + sy;
-                                    if (yy >= internalH) break;
-                                    for (let sx = 0; sx < step; sx++) {
-                                        const xx = px + sx;
-                                        if (xx >= internalW) break;
-
-                                        const idxPix = yy * internalW + xx;
-                                        iterations[idxPix] = tBlock;
-                                        radialMask[idxPix] = maskBlock;
-
-                                        const {
-                                            r: cr,
-                                            g: cg,
-                                            b: cb,
-                                        } = colorForT(tBlock, params);
-                                        const idx4 = idxPix * 4;
-                                        imgData[idx4] = cr * maskBlock;
-                                        imgData[idx4 + 1] = cg * maskBlock;
-                                        imgData[idx4 + 2] = cb * maskBlock;
-                                        imgData[idx4 + 3] = 255;
-                                    }
-                                }
-                            }
-
-                            if (cancelRender) break;
-
-                            const now = performance.now();
-                            if (now - lastYield > 12) {
-                                present();
-                                await new Promise(requestAnimationFrame);
-                                lastYield = performance.now();
-                            }
-                        }
-
-                        if (cancelRender) {
-                            rendering = false;
-                            setStatus("Render cancelled");
-                            present();
-                            return;
-                        }
-                    }
-
-                    if (!cancelRender) {
-                        await supersamplePass();
-                    }
-
-                    rendering = false;
-                    finalReady = true;
-                    setStatus(`Done [${internalW}×${internalH}, supersampled]`);
-                    present();
-                }
-
-                function killRenderIfAny() {
-                    if (rendering) cancelRender = true;
-                }
-
-                // Panning
+                // JS-only pan: move worldCenter + transform baseCanvas
                 canvas.addEventListener("pointerdown", (e) => {
-                    killRenderIfAny();
                     isPanning = true;
                     canvas.setPointerCapture(e.pointerId);
                     panStartX = e.clientX;
                     panStartY = e.clientY;
-                    panOrigOffsetX = viewOffsetX;
-                    panOrigOffsetY = viewOffsetY;
+                    panStartCenterX = worldCenterX;
+                    panStartCenterY = worldCenterY;
+                    markInteraction();
                 });
 
                 canvas.addEventListener("pointermove", (e) => {
                     if (!isPanning) return;
-                    const dx = (e.clientX - panStartX) * deviceDpr;
-                    const dy = (e.clientY - panStartY) * deviceDpr;
-                    viewOffsetX = panOrigOffsetX + dx;
-                    viewOffsetY = panOrigOffsetY + dy;
-                    present();
+                    const dx = e.clientX - panStartX;
+                    const dy = e.clientY - panStartY;
+
+                    const { worldWidth, worldHeight } = currentWorldParams();
+
+                    worldCenterX =
+                        panStartCenterX -
+                        (dx / (window.innerWidth || 1)) * worldWidth;
+                    worldCenterY =
+                        panStartCenterY -
+                        (dy / (window.innerHeight || 1)) * worldHeight;
+
+                    viewOffsetX = dx;
+                    viewOffsetY = dy;
+
+                    markInteraction();
                 });
 
-                canvas.addEventListener("pointerup", (e) => {
+                function endPan(e) {
                     if (!isPanning) return;
                     isPanning = false;
-                    canvas.releasePointerCapture(e.pointerId);
-                });
+                    try {
+                        canvas.releasePointerCapture(e.pointerId);
+                    } catch (_) {}
+                    markInteraction();
+                }
 
-                canvas.addEventListener("pointercancel", (e) => {
-                    if (!isPanning) return;
-                    isPanning = false;
-                    canvas.releasePointerCapture(e.pointerId);
-                });
+                canvas.addEventListener("pointerup", endPan);
+                canvas.addEventListener("pointercancel", endPan);
 
-                // Zoom
+                // JS-only zoom: zoom cached frame + update worldScale
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
-                        killRenderIfAny();
 
                         const rect = canvas.getBoundingClientRect();
-                        const cx = (e.clientX - rect.left) * deviceDpr;
-                        const cy = (e.clientY - rect.top) * deviceDpr;
+                        const sx = (e.clientX - rect.left) * dpr;
+                        const sy = (e.clientY - rect.top) * dpr;
+
+                        const before = screenToWorld(sx, sy);
 
                         const delta = -e.deltaY;
                         const zoomFactor = Math.exp(delta * 0.001);
+                        worldScale /= zoomFactor;
 
-                        viewOffsetX = cx - zoomFactor * (cx - viewOffsetX);
-                        viewOffsetY = cy - zoomFactor * (cy - viewOffsetY);
-                        viewScale *= zoomFactor;
+                        const after = screenToWorld(sx, sy);
+                        worldCenterX += before.cx - after.cx;
+                        worldCenterY += before.cy - after.cy;
 
-                        present();
+                        const oldScale = viewScale;
+                        const newScale = viewScale * zoomFactor;
+
+                        viewOffsetX =
+                            sx - (sx - viewOffsetX) * (newScale / oldScale);
+                        viewOffsetY =
+                            sy - (sy - viewOffsetY) * (newScale / oldScale);
+                        viewScale = newScale;
+
+                        markInteraction();
                     },
                     { passive: false },
                 );
 
-                // Palette changes: mark dirty, recolor scheduled in paletteLoop
-                fractalInput.addEventListener("input", requestPaletteRecolor);
-                fractalStrengthInput.addEventListener(
-                    "input",
-                    requestPaletteRecolor,
-                );
+                // Palette changes: recolor from grayscale if we have it, else full rerender
+                function applyPalette() {
+                    if (!grayBuffer || grayW !== fullW || grayH !== fullH)
+                        return;
 
-                resize();
-                present();
-                setStatus("Rendering…");
-                paletteLoop();
-                renderProgressive();
+                    const N = grayBuffer.length;
+                    const out = new Uint8ClampedArray(N * 4);
+
+                    const color = hexToRgb(fc.value);
+                    const bandWidth = getBandWidth();
+
+                    let o = 0;
+                    for (let i = 0; i < N; i++) {
+                        const gNorm = grayBuffer[i] / 255; // 0..1
+                        let r, g, b;
+
+                        if (gNorm <= 0) {
+                            r = g = b = 0;
+                        } else {
+                            let w;
+                            if (gNorm >= bandWidth) w = 1;
+                            else w = gNorm / bandWidth;
+
+                            r = color.r * w;
+                            g = color.g * w;
+                            b = color.b * w;
+                        }
+
+                        out[o++] = r;
+                        out[o++] = g;
+                        out[o++] = b;
+                        out[o++] = 255;
+                    }
+
+                    const img = new ImageData(out, grayW, grayH);
+                    baseCanvas.width = fullW;
+                    baseCanvas.height = fullH;
+                    baseCtx.putImageData(img, 0, 0);
+
+                    baseValid = true;
+                }
+
+                fc.addEventListener("input", () => {
+                    if (grayBuffer && grayW === fullW && grayH === fullH) {
+                        applyPalette();
+                    } else {
+                        markInteraction();
+                        requestFullRender();
+                    }
+                });
+
+                bw.addEventListener("input", () => {
+                    if (grayBuffer && grayW === fullW && grayH === fullH) {
+                        applyPalette();
+                    } else {
+                        markInteraction();
+                        requestFullRender();
+                    }
+                });
+
+                function drawInteractiveFrame() {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, fullW, fullH);
+
+                    if (!baseValid) return;
+
+                    ctx.setTransform(
+                        viewScale,
+                        0,
+                        0,
+                        viewScale,
+                        viewOffsetX,
+                        viewOffsetY,
+                    );
+                    ctx.drawImage(baseCanvas, 0, 0);
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                }
+
+                function drawStableBase() {
+                    if (!baseValid) return;
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, fullW, fullH);
+                    ctx.drawImage(baseCanvas, 0, 0);
+                }
+
+                function runStage(stageIndex) {
+                    if (
+                        !wasmReady ||
+                        stageIndex < 0 ||
+                        stageIndex >= STAGES.length
+                    ) {
+                        currentStage = -1;
+                        stagePending = false;
+                        return;
+                    }
+
+                    const stage = STAGES[stageIndex];
+                    const baseFactor = stage.factor;
+                    const iter = stage.iter;
+                    const samplesDim = stage.samplesDim;
+
+                    // Proposed framebuffer size
+                    let targetW = Math.max(1, Math.floor(fullW * baseFactor));
+                    let targetH = Math.max(1, Math.floor(fullH * baseFactor));
+                    let pixels = targetW * targetH;
+
+                    // Clamp by MAX_PIXELS
+                    if (pixels > MAX_PIXELS) {
+                        const scale = Math.sqrt(MAX_PIXELS / pixels);
+                        targetW = Math.max(1, Math.floor(targetW * scale));
+                        targetH = Math.max(1, Math.floor(targetH * scale));
+                        pixels = targetW * targetH;
+                    }
+
+                    fbW = targetW;
+                    fbH = targetH;
+
+                    initFB(fbW, fbH);
+                    fbPtr = getPtr();
+
+                    if (!Module.HEAPU8 || !Module.HEAPU8.buffer) {
+                        setStatus("WASM: no HEAPU8");
+                        fbView = null;
+                        currentStage = -1;
+                        stagePending = false;
+                        return;
+                    }
+
+                    fbView = new Uint8ClampedArray(
+                        Module.HEAPU8.buffer,
+                        fbPtr,
+                        fbW * fbH * 4,
+                    );
+
+                    renderFrame(
+                        worldCenterX,
+                        worldCenterY,
+                        worldScale,
+                        iter,
+                        samplesDim,
+                        CIRC_X,
+                        CIRC_Y,
+                        CIRC_R,
+                    );
+
+                    bufCanvas.width = fbW;
+                    bufCanvas.height = fbH;
+
+                    const img = new ImageData(fbView, fbW, fbH);
+                    bufCtx.putImageData(img, 0, 0);
+
+                    // Draw grayscale stage to main canvas
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, fullW, fullH);
+                    ctx.drawImage(
+                        bufCanvas,
+                        0,
+                        0,
+                        fbW,
+                        fbH,
+                        0,
+                        0,
+                        fullW,
+                        fullH,
+                    );
+
+                    const effectiveFactor = fbW / fullW;
+
+                    // Final stage: capture grayscale and apply palette in JS
+                    if (stageIndex === STAGES.length - 1) {
+                        grayW = fbW;
+                        grayH = fbH;
+                        grayBuffer = new Uint8Array(grayW * grayH);
+
+                        // Copy R channel (grayscale) into grayBuffer
+                        for (
+                            let i = 0, j = 0;
+                            i < grayBuffer.length;
+                            i++, j += 4
+                        ) {
+                            grayBuffer[i] = fbView[j];
+                        }
+
+                        applyPalette();
+                        baseValid = true;
+
+                        // Reset interactive transform
+                        viewScale = 1;
+                        viewOffsetX = 0;
+                        viewOffsetY = 0;
+                    }
+
+                    setStatus(
+                        `stage=${stageIndex} baseFactor=${baseFactor} effFactor=${effectiveFactor.toFixed(2)} ` +
+                            `iter=${iter} samplesDim=${samplesDim} center=(${worldCenterX.toFixed(6)}, ${worldCenterY.toFixed(6)}) ` +
+                            `scale=${worldScale.toExponential(3)}`,
+                    );
+
+                    currentStage++;
+                    stagePending = currentStage < STAGES.length;
+                    if (!stagePending) {
+                        currentStage = -1;
+                    }
+                }
+
+                function loop() {
+                    const now = performance.now();
+
+                    if (
+                        interactionActive &&
+                        now - lastInteractionTime > INTERACTION_SETTLE_MS &&
+                        currentStage === -1
+                    ) {
+                        interactionActive = false;
+                        // Reset display transform for the new baked frame
+                        viewScale = 1;
+                        viewOffsetX = 0;
+                        viewOffsetY = 0;
+                        requestFullRender();
+                    }
+
+                    if (interactionActive) {
+                        drawInteractiveFrame();
+                    } else if (stagePending) {
+                        runStage(currentStage);
+                    } else {
+                        drawStableBase();
+                    }
+
+                    requestAnimationFrame(loop);
+                }
+
+                function initAfterWasm() {
+                    initFB = Module.cwrap("init_framebuffer", null, [
+                        "number",
+                        "number",
+                    ]);
+                    getPtr = Module.cwrap("get_framebuffer_ptr", "number", []);
+                    // render_frame(cx, cy, scale, maxIter, samplesPerDim, circx, circy, circr)
+                    renderFrame = Module.cwrap("render_frame", null, [
+                        "number",
+                        "number",
+                        "number", // centerX, centerY, scale
+                        "number", // maxIter
+                        "number", // samplesPerDim
+                        "number",
+                        "number",
+                        "number", // circleX, Y, R
+                    ]);
+
+                    wasmReady = true;
+                    setStatus("WASM ready");
+
+                    resize();
+                    requestFullRender();
+                    loop();
+                }
+
+                if (typeof Module === "undefined") {
+                    window.Module = {};
+                }
+                Module = Module || {};
+                Module.onRuntimeInitialized = initAfterWasm;
+
+                if (Module.calledRun) {
+                    initAfterWasm();
+                }
             })();
         </script>
     </body>
