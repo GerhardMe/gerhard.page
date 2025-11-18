@@ -1,4 +1,3 @@
-// mandel.c
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -27,12 +26,10 @@ uint8_t *get_framebuffer_ptr(void)
     return framebuffer;
 }
 
-// Analytic interior: main cardioid + period-2 bulb
 static int in_cardioid_or_bulb(double x, double y)
 {
     double yabs = (y >= 0.0) ? y : -y;
 
-    // period-2 bulb
     double dx2 = x + 1.0;
     double dy2 = yabs;
     if (dx2 * dx2 + dy2 * dy2 < 0.0625)
@@ -40,13 +37,11 @@ static int in_cardioid_or_bulb(double x, double y)
         return 1;
     }
 
-    // main cardioid
     double dx = x - 0.25;
     double q = dx * dx + yabs * yabs;
     return q * (q + dx) < 0.25 * yabs * yabs;
 }
 
-// Core iteration with symmetry + smooth coloring
 static double mandel(double cx, double cy, int maxIter)
 {
     double ay = (cy >= 0.0) ? cy : -cy;
@@ -78,8 +73,7 @@ static double mandel(double cx, double cy, int maxIter)
     return i + 1.0 - log(log(mag)) / log(2.0);
 }
 
-// Full-frame renderer into framebuffer (RGBA), output is **grayscale**
-// samplesPerDim: 1 = 1 sample, 2 = 2x2 = 4 samples per pixel, ...
+// Grayscale + supersampling
 void render_frame(
     double cx, double cy, double scale,
     int maxIter,
@@ -108,7 +102,6 @@ void render_frame(
     {
         for (int i = 0; i < fbW; i++)
         {
-            // Circle test at pixel center (good enough)
             double uc = (double)i / (double)(fbW - 1);
             double vc = (double)j / (double)(fbH - 1);
             double xc = x0 + uc * ww;
@@ -144,8 +137,7 @@ void render_frame(
                     double n;
                     if (t >= (double)maxIter || t <= 0.0)
                     {
-                        // interior (or invalid) -> black
-                        n = 0.0;
+                        n = 0.0; // interior -> black
                     }
                     else
                     {
@@ -164,7 +156,6 @@ void render_frame(
 
             uint8_t g = (uint8_t)(avg * 255.0 + 0.5);
 
-            // Grayscale in all channels; JS will recolor using the R channel
             framebuffer[idx + 0] = g;
             framebuffer[idx + 1] = g;
             framebuffer[idx + 2] = g;

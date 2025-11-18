@@ -2,7 +2,9 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Mandelbrot WASM (JS pan/zoom + grayscale + JS palette)</title>
+        <title>
+            Mandelbrot WASM (JS pan/zoom, pixel-size stages, JS palette)
+        </title>
         <style>
             html,
             body {
@@ -76,15 +78,13 @@
             <div id="status">WASM loading…</div>
         </div>
 
-        <!-- Astro: <script src="/mandel.js" is:inline></script> -->
+        <!-- Astro-friendly: wasm JS loader is marked inline -->
         <script is:inline src="/mandel.js"></script>
 
-        <!-- Astro: <script is:inline> ... </script> -->
         <script>
             (function () {
                 const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
-                const dpr = window.devicePixelRatio || 1;
 
                 const fc = document.getElementById("fc");
                 const bw = document.getElementById("bw");
@@ -92,11 +92,12 @@
 
                 fc.value = "#00ffff";
 
-                // World view
+                // World view in complex plane
                 let worldCenterX = -0.75;
                 let worldCenterY = 0.0;
                 let worldScale = 1.5;
 
+                // Circle cutoff in world coords
                 const CIRC_X = -0.75;
                 const CIRC_Y = 0.0;
                 const CIRC_R = 1.5;
@@ -104,17 +105,12 @@
                 let fullW = 0;
                 let fullH = 0;
 
-                // Last high-quality colored frame
+                // Last rendered colored frame, used for JS pan/zoom
                 const baseCanvas = document.createElement("canvas");
                 const baseCtx = baseCanvas.getContext("2d");
                 let baseValid = false;
 
-                // Grayscale buffer (one byte per pixel, 0..255) from final stage
-                let grayBuffer = null;
-                let grayW = 0;
-                let grayH = 0;
-
-                // Buffer canvas for stage output
+                // Offscreen buffer for each WASM stage
                 const bufCanvas = document.createElement("canvas");
                 const bufCtx = bufCanvas.getContext("2d");
 
@@ -123,24 +119,35 @@
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
-                // WASM API
+                // WASM
                 let wasmReady = false;
                 let initFB = null;
                 let getPtr = null;
                 let renderFrame = null;
 
-                // WASM framebuffer view (RGBA, grayscale in R/G/B)
                 let fbW = 0;
                 let fbH = 0;
                 let fbPtr = 0;
                 let fbView = null;
 
-                // Stages: factor, iter, samplesPerDim
+                // All stages use same maxIter; stages differ only in pixel size.
+                const MAX_ITER = 500;
+
+                // Progressive pixel sizes:
+                // 64, 32, 16, 8, 4, 2, 1, 0.5 (last one is 2x resolution downscaled)
                 const STAGES = [
-                    { factor: 0.3, iter: 150, samplesDim: 1 }, // quick preview
-                    { factor: 1.0, iter: 500, samplesDim: 2 }, // full-res 2x2 samples/pixel
+                    { pixelSize: 64, samplesDim: 1 },
+                    { pixelSize: 32, samplesDim: 1 },
+                    { pixelSize: 16, samplesDim: 1 },
+                    { pixelSize: 8, samplesDim: 1 },
+                    { pixelSize: 4, samplesDim: 1 },
+                    { pixelSize: 2, samplesDim: 1 },
+                    { pixelSize: 1, samplesDim: 1 },
+                    { pixelSize: 1, samplesDim: 4 },
                 ];
-                const MAX_PIXELS = 5_000_000; // safety cap
+
+                // Hard pixel cap to avoid OOM
+                const MAX_PIXELS = 1_000_000; // ~4 MB framebuffer
 
                 let currentStage = -1;
                 let stagePending = false;
@@ -148,9 +155,9 @@
                 // Interaction timing
                 let interactionActive = false;
                 let lastInteractionTime = 0;
-                const INTERACTION_SETTLE_MS = 150;
+                const INTERACTION_SETTLE_MS = 250;
 
-                // Panning
+                // Panning state
                 let isPanning = false;
                 let panStartX = 0;
                 let panStartY = 0;
@@ -164,7 +171,9 @@
                             : interactionActive
                               ? "interactive"
                               : "idle";
-                    status.textContent = `${msg} | mode=${mode} | WASM=${wasmReady ? "on" : "off"}`;
+                    status.textContent = `${msg} | mode=${mode} | WASM=${
+                        wasmReady ? "on" : "off"
+                    }`;
                 }
 
                 function hexToRgb(hex) {
@@ -180,6 +189,7 @@
                     };
                 }
 
+                // Glow slider: 0 = wide/soft, 100 = thin/bright
                 function getBandWidth() {
                     const raw = parseInt(bw.value, 10) || 0;
                     const sNorm = Math.min(1, Math.max(0, raw / 100));
@@ -212,11 +222,12 @@
                     const cssW = window.innerWidth;
                     const cssH = window.innerHeight;
 
+                    // 1:1 mapping between CSS pixels and canvas pixels
                     canvas.style.width = cssW + "px";
                     canvas.style.height = cssH + "px";
 
-                    canvas.width = Math.floor(cssW * dpr);
-                    canvas.height = Math.floor(cssH * dpr);
+                    canvas.width = cssW;
+                    canvas.height = cssH;
 
                     fullW = canvas.width;
                     fullH = canvas.height;
@@ -225,9 +236,6 @@
                     baseCanvas.height = fullH;
 
                     baseValid = false;
-                    grayBuffer = null;
-                    grayW = grayH = 0;
-
                     viewScale = 1;
                     viewOffsetX = 0;
                     viewOffsetY = 0;
@@ -254,7 +262,40 @@
                     stagePending = true;
                 }
 
-                // JS-only pan: move worldCenter + transform baseCanvas
+                // JS colorization: grayscale (0..255) → RGBA
+                function colorizeGray(gray, w, h) {
+                    const N = gray.length;
+                    const out = new Uint8ClampedArray(N * 4);
+
+                    const color = hexToRgb(fc.value);
+                    const bandWidth = getBandWidth();
+
+                    let o = 0;
+                    for (let i = 0; i < N; i++) {
+                        const gNorm = gray[i] / 255;
+                        let r, g, b;
+
+                        if (gNorm <= 0) {
+                            r = g = b = 0;
+                        } else {
+                            let wVal;
+                            if (gNorm >= bandWidth) wVal = 1;
+                            else wVal = gNorm / bandWidth;
+
+                            r = color.r * wVal;
+                            g = color.g * wVal;
+                            b = color.b * wVal;
+                        }
+
+                        out[o++] = r;
+                        out[o++] = g;
+                        out[o++] = b;
+                        out[o++] = 255;
+                    }
+                    return out;
+                }
+
+                // JS-only pan
                 canvas.addEventListener("pointerdown", (e) => {
                     isPanning = true;
                     canvas.setPointerCapture(e.pointerId);
@@ -297,15 +338,15 @@
                 canvas.addEventListener("pointerup", endPan);
                 canvas.addEventListener("pointercancel", endPan);
 
-                // JS-only zoom: zoom cached frame + update worldScale
+                // JS-only zoom
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
                         e.preventDefault();
 
                         const rect = canvas.getBoundingClientRect();
-                        const sx = (e.clientX - rect.left) * dpr;
-                        const sy = (e.clientY - rect.top) * dpr;
+                        const sx = e.clientX - rect.left;
+                        const sy = e.clientY - rect.top;
 
                         const before = screenToWorld(sx, sy);
 
@@ -331,65 +372,28 @@
                     { passive: false },
                 );
 
-                // Palette changes: recolor from grayscale if we have it, else full rerender
-                function applyPalette() {
-                    if (!grayBuffer || grayW !== fullW || grayH !== fullH)
-                        return;
+                // ---------- FIXED PALETTE HANDLING ----------
+                function handlePaletteChange() {
+                    // Throw away current base image
+                    baseValid = false;
+                    // Cancel any in-progress stage
+                    stagePending = false;
+                    currentStage = -1;
 
-                    const N = grayBuffer.length;
-                    const out = new Uint8ClampedArray(N * 4);
+                    // This is not an "interaction" in the pan/zoom sense;
+                    // go straight into a fresh staged render.
+                    interactionActive = false;
+                    isPanning = false;
+                    viewScale = 1;
+                    viewOffsetX = 0;
+                    viewOffsetY = 0;
 
-                    const color = hexToRgb(fc.value);
-                    const bandWidth = getBandWidth();
-
-                    let o = 0;
-                    for (let i = 0; i < N; i++) {
-                        const gNorm = grayBuffer[i] / 255; // 0..1
-                        let r, g, b;
-
-                        if (gNorm <= 0) {
-                            r = g = b = 0;
-                        } else {
-                            let w;
-                            if (gNorm >= bandWidth) w = 1;
-                            else w = gNorm / bandWidth;
-
-                            r = color.r * w;
-                            g = color.g * w;
-                            b = color.b * w;
-                        }
-
-                        out[o++] = r;
-                        out[o++] = g;
-                        out[o++] = b;
-                        out[o++] = 255;
-                    }
-
-                    const img = new ImageData(out, grayW, grayH);
-                    baseCanvas.width = fullW;
-                    baseCanvas.height = fullH;
-                    baseCtx.putImageData(img, 0, 0);
-
-                    baseValid = true;
+                    requestFullRender();
                 }
 
-                fc.addEventListener("input", () => {
-                    if (grayBuffer && grayW === fullW && grayH === fullH) {
-                        applyPalette();
-                    } else {
-                        markInteraction();
-                        requestFullRender();
-                    }
-                });
-
-                bw.addEventListener("input", () => {
-                    if (grayBuffer && grayW === fullW && grayH === fullH) {
-                        applyPalette();
-                    } else {
-                        markInteraction();
-                        requestFullRender();
-                    }
-                });
+                fc.addEventListener("input", handlePaletteChange);
+                bw.addEventListener("input", handlePaletteChange);
+                // ---------- END FIX ----------
 
                 function drawInteractiveFrame() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -428,26 +432,19 @@
                     }
 
                     const stage = STAGES[stageIndex];
-                    const baseFactor = stage.factor;
-                    const iter = stage.iter;
+                    const pixelSize = stage.pixelSize; // 64, 32, ..., 1, 0.5
                     const samplesDim = stage.samplesDim;
 
-                    // Proposed framebuffer size
+                    // pixelSize = how many screen pixels one computed pixel covers.
+                    // So framebuffer resolution is fullW/pixelSize × fullH/pixelSize.
+                    const baseFactor = 1 / pixelSize;
                     let targetW = Math.max(1, Math.floor(fullW * baseFactor));
                     let targetH = Math.max(1, Math.floor(fullH * baseFactor));
-                    let pixels = targetW * targetH;
-
-                    // Clamp by MAX_PIXELS
-                    if (pixels > MAX_PIXELS) {
-                        const scale = Math.sqrt(MAX_PIXELS / pixels);
-                        targetW = Math.max(1, Math.floor(targetW * scale));
-                        targetH = Math.max(1, Math.floor(targetH * scale));
-                        pixels = targetW * targetH;
-                    }
 
                     fbW = targetW;
                     fbH = targetH;
 
+                    // Alloc framebuffer in WASM
                     initFB(fbW, fbH);
                     fbPtr = getPtr();
 
@@ -465,24 +462,35 @@
                         fbW * fbH * 4,
                     );
 
+                    // All stages use same iteration count
                     renderFrame(
                         worldCenterX,
                         worldCenterY,
                         worldScale,
-                        iter,
+                        MAX_ITER,
                         samplesDim,
                         CIRC_X,
                         CIRC_Y,
                         CIRC_R,
                     );
 
+                    // Extract grayscale
+                    const gray = new Uint8Array(fbW * fbH);
+                    for (let i = 0, j = 0; i < gray.length; i++, j += 4) {
+                        gray[i] = fbView[j];
+                    }
+
+                    // Colorize
+                    const colored = colorizeGray(gray, fbW, fbH);
+
+                    // Put into temporary canvas
                     bufCanvas.width = fbW;
                     bufCanvas.height = fbH;
 
-                    const img = new ImageData(fbView, fbW, fbH);
+                    const img = new ImageData(colored, fbW, fbH);
                     bufCtx.putImageData(img, 0, 0);
 
-                    // Draw grayscale stage to main canvas
+                    // Scale to screen
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                     ctx.clearRect(0, 0, fullW, fullH);
                     ctx.drawImage(
@@ -497,55 +505,32 @@
                         fullH,
                     );
 
-                    const effectiveFactor = fbW / fullW;
-
-                    // Final stage: capture grayscale and apply palette in JS
-                    if (stageIndex === STAGES.length - 1) {
-                        grayW = fbW;
-                        grayH = fbH;
-                        grayBuffer = new Uint8Array(grayW * grayH);
-
-                        // Copy R channel (grayscale) into grayBuffer
-                        for (
-                            let i = 0, j = 0;
-                            i < grayBuffer.length;
-                            i++, j += 4
-                        ) {
-                            grayBuffer[i] = fbView[j];
-                        }
-
-                        applyPalette();
-                        baseValid = true;
-
-                        // Reset interactive transform
-                        viewScale = 1;
-                        viewOffsetX = 0;
-                        viewOffsetY = 0;
-                    }
+                    // Update baseCanvas for panning/zooming
+                    baseCanvas.width = fullW;
+                    baseCanvas.height = fullH;
+                    baseCtx.clearRect(0, 0, fullW, fullH);
+                    baseCtx.drawImage(canvas, 0, 0);
+                    baseValid = true;
 
                     setStatus(
-                        `stage=${stageIndex} baseFactor=${baseFactor} effFactor=${effectiveFactor.toFixed(2)} ` +
-                            `iter=${iter} samplesDim=${samplesDim} center=(${worldCenterX.toFixed(6)}, ${worldCenterY.toFixed(6)}) ` +
-                            `scale=${worldScale.toExponential(3)}`,
+                        `stage=${stageIndex} pixelSize=${pixelSize} fb=${fbW}x${fbH}`,
                     );
 
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
-                    if (!stagePending) {
-                        currentStage = -1;
-                    }
+                    if (!stagePending) currentStage = -1;
                 }
 
                 function loop() {
                     const now = performance.now();
 
+                    // When user stops interacting, schedule new staged render
                     if (
                         interactionActive &&
                         now - lastInteractionTime > INTERACTION_SETTLE_MS &&
                         currentStage === -1
                     ) {
                         interactionActive = false;
-                        // Reset display transform for the new baked frame
                         viewScale = 1;
                         viewOffsetX = 0;
                         viewOffsetY = 0;
@@ -569,16 +554,15 @@
                         "number",
                     ]);
                     getPtr = Module.cwrap("get_framebuffer_ptr", "number", []);
-                    // render_frame(cx, cy, scale, maxIter, samplesPerDim, circx, circy, circr)
                     renderFrame = Module.cwrap("render_frame", null, [
                         "number",
                         "number",
-                        "number", // centerX, centerY, scale
+                        "number", // cx, cy, scale
                         "number", // maxIter
                         "number", // samplesPerDim
                         "number",
                         "number",
-                        "number", // circleX, Y, R
+                        "number", // circx, circy, circr
                     ]);
 
                     wasmReady = true;
