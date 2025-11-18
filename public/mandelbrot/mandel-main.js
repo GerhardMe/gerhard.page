@@ -92,12 +92,8 @@
     let jobInFlight = false;
 
     const STAGES = [
-        { scale: 64 },
-        { scale: 32 },
-        { scale: 16 },
-        { scale: 8 },
         { scale: 4 },
-        { scale: 2 },
+        { scale: 1 },
         { scale: 0.25 },
     ];
     let currentStage = -1;

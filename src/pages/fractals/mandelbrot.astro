@@ -1,5 +1,5 @@
 ---
-import Layout from "../../../layouts/main.astro";
+import Layout from "../../layouts/main.astro";
 ---
 
 <Layout>
@@ -176,5 +176,19 @@ import Layout from "../../../layouts/main.astro";
         flex: 1 1 auto;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    /* Neutralise any mobile/hi-DPI scaling from the Layout on this page */
+    @media (min-resolution: 2dppx),
+        (-webkit-min-device-pixel-ratio: 2),
+        (max-width: 900px) {
+        :global(html),
+        :global(body),
+        :global(main),
+        :global(#app) {
+            zoom: 1 !important;
+            transform: none !important;
+            font-size: 16px !important;
+        }
     }
 </style>
