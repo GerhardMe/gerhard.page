@@ -47,7 +47,7 @@
                 padding: 8px 10px;
                 background: rgba(0, 0, 0, 0.75);
                 border-radius: 2px;
-                border: 1px solid; /* updated from JS to match palette color */
+                border: 1px solid;
                 font-size: 12px;
                 z-index: 10;
                 user-select: none;
@@ -117,7 +117,7 @@
             }
 
             #backLink {
-                color: #00ffff; /* updated from JS to match palette color */
+                color: #00ffff;
                 cursor: pointer;
                 white-space: nowrap;
                 flex: 0 0 auto;
@@ -210,7 +210,8 @@
                 }
 
                 function setZoomStatus() {
-                    statusZoom = `zoom: ${zoom.toFixed(3)}x`;
+                    const effectiveZoom = zoom * (viewScale || 1);
+                    statusZoom = `zoom: ${effectiveZoom.toFixed(3)}x`;
                     updateStatus();
                 }
 
@@ -232,16 +233,17 @@
                     updateStatus();
                 }
 
-                // initialize from checkbox state so it's respected on first render
-                let fillInterior = fillInside.checked ? 1 : 0;
-
+                // "base" world view parameters (for baseCanvas / last render)
                 let centerX = -0.75;
                 let centerY = 0.0;
                 let zoom = 1.0;
 
+                // fill option
+                let fillInterior = fillInside.checked ? 1 : 0;
+
+                // framebuffer / base image
                 let fullW = 0;
                 let fullH = 0;
-
                 const baseCanvas = document.createElement("canvas");
                 const baseCtx = baseCanvas.getContext("2d");
                 let baseValid = false;
@@ -249,19 +251,21 @@
                 const bufCanvas = document.createElement("canvas");
                 const bufCtx = bufCanvas.getContext("2d");
 
+                let lastGray = null;
+                let lastFbW = 0;
+                let lastFbH = 0;
+
+                // screen transform (pan/zoom of base image)
                 let viewScale = 1;
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
+                // worker
                 let worker = null;
                 let workerReady = false;
                 let nextJobId = 1;
                 let currentJobId = null;
                 let jobInFlight = false;
-
-                let lastGray = null;
-                let lastFbW = 0;
-                let lastFbH = 0;
 
                 const STAGES = [
                     { scale: 64 },
@@ -272,33 +276,41 @@
                     { scale: 2 },
                     { scale: 0.25 },
                 ];
-
                 let currentStage = -1;
                 let stagePending = false;
 
+                // interaction throttling
                 let interactionActive = false;
                 let lastInteractionTime = 0;
                 const INTERACTION_SETTLE_MS = 50;
 
+                // pan state
                 let isPanning = false;
                 let panStartX = 0;
                 let panStartY = 0;
-                let panStartCenterX = 0;
-                let panStartCenterY = 0;
+                let panStartOffsetX = 0;
+                let panStartOffsetY = 0;
 
-                // drag for controls (via header only)
+                // controls drag
                 let draggingControls = false;
                 let dragOffsetX = 0;
                 let dragOffsetY = 0;
 
-                // pinch-zoom state
-                const activePointers = new Map(); // id -> {x, y}
+                // pinch-zoom
+                const activePointers = new Map();
                 let isPinching = false;
                 let pinchStartDist = 0;
-                let pinchStartZoom = 1;
-                let pinchStartWorldX = 0;
-                let pinchStartWorldY = 0;
-                let pinchLastZoomFactor = 1;
+                let pinchStartScale = 1;
+                let pinchStartOffsetX = 0;
+                let pinchStartOffsetY = 0;
+                let pinchAnchorScreenX = 0;
+                let pinchAnchorScreenY = 0;
+                let pinchAnchorWorldX = 0;
+                let pinchAnchorWorldY = 0;
+
+                // cursor tracking – always live
+                let cursorScreenX = null;
+                let cursorScreenY = null;
 
                 function hexToRgb(hex) {
                     let h = hex.replace("#", "");
@@ -322,39 +334,79 @@
                     return minW + sInv * (maxW - minW);
                 }
 
-                function currentWorldParams() {
+                // world rect for a given center/zoom
+                function worldParamsFor(cX, cY, z) {
                     if (!fullW || !fullH) {
                         return {
                             worldWidth: 0,
                             worldHeight: 0,
-                            worldX0: centerX,
-                            worldY0: centerY,
+                            worldX0: cX,
+                            worldY0: cY,
                         };
                     }
+
+                    const zSafe = z > 0 ? z : 1;
                     const minDim = Math.min(fullW, fullH);
                     const basePixelSize = 4.0 / minDim;
-                    const pixelSize = basePixelSize / zoom;
+                    const pixelSize = basePixelSize / zSafe;
 
                     const worldWidth = pixelSize * fullW;
                     const worldHeight = pixelSize * fullH;
 
-                    const worldX0 = centerX - worldWidth / 2;
-                    const worldY0 = centerY - worldHeight / 2;
+                    const worldX0 = cX - worldWidth / 2;
+                    const worldY0 = cY - worldHeight / 2;
 
                     return { worldWidth, worldHeight, worldX0, worldY0 };
                 }
 
+                // screen -> world using base view + current transform
                 function screenToWorld(sx, sy) {
                     const { worldWidth, worldHeight, worldX0, worldY0 } =
-                        currentWorldParams();
-                    if (!fullW || !fullH) {
+                        worldParamsFor(centerX, centerY, zoom);
+                    if (!fullW || !fullH || !worldWidth || !worldHeight) {
                         return { cx: centerX, cy: centerY };
                     }
-                    const u = sx / fullW;
-                    const v = sy / fullH;
+
+                    const s = viewScale || 1;
+                    const baseX = (sx - viewOffsetX) / s;
+                    const baseY = (sy - viewOffsetY) / s;
+
+                    const u = baseX / fullW;
+                    const v = baseY / fullH;
+
                     const cx = worldX0 + u * worldWidth;
                     const cy = worldY0 + v * worldHeight;
                     return { cx, cy };
+                }
+
+                // current visual view (center/zoom) from transform + base view
+                function getCurrentView() {
+                    const effectiveZoom = zoom * (viewScale || 1);
+                    const baseParams = worldParamsFor(centerX, centerY, zoom);
+                    if (
+                        !fullW ||
+                        !fullH ||
+                        !baseParams.worldWidth ||
+                        !baseParams.worldHeight
+                    ) {
+                        return {
+                            cx: centerX,
+                            cy: centerY,
+                            zoom: effectiveZoom,
+                        };
+                    }
+
+                    const s = viewScale || 1;
+                    const baseXCenter = (fullW / 2 - viewOffsetX) / s;
+                    const baseYCenter = (fullH / 2 - viewOffsetY) / s;
+
+                    const u = baseXCenter / fullW;
+                    const v = baseYCenter / fullH;
+
+                    const cx = baseParams.worldX0 + u * baseParams.worldWidth;
+                    const cy = baseParams.worldY0 + v * baseParams.worldHeight;
+
+                    return { cx, cy, zoom: effectiveZoom };
                 }
 
                 function resize() {
@@ -373,11 +425,7 @@
 
                     baseCanvas.width = fullW;
                     baseCanvas.height = fullH;
-
                     baseValid = false;
-                    viewScale = 1;
-                    viewOffsetX = 0;
-                    viewOffsetY = 0;
 
                     lastGray = null;
 
@@ -395,6 +443,7 @@
                     interactionActive = true;
                     lastInteractionTime = performance.now();
 
+                    // stop current staged render; we will start a new one after settle
                     stagePending = false;
                     currentStage = -1;
 
@@ -447,7 +496,23 @@
                     return out;
                 }
 
-                function applyPaletteToLastGray() {
+                function redrawFromBase() {
+                    if (!baseValid) return;
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, fullW, fullH);
+                    ctx.setTransform(
+                        viewScale,
+                        0,
+                        0,
+                        viewScale,
+                        viewOffsetX,
+                        viewOffsetY,
+                    );
+                    ctx.drawImage(baseCanvas, 0, 0);
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                }
+
+                function recolorFromLastGray() {
                     if (!lastGray || lastFbW <= 0 || lastFbH <= 0) return;
 
                     const colored = colorizeGray(lastGray, lastFbW, lastFbH);
@@ -457,8 +522,6 @@
                     const img = new ImageData(colored, lastFbW, lastFbH);
                     bufCtx.putImageData(img, 0, 0);
 
-                    baseCanvas.width = fullW;
-                    baseCanvas.height = fullH;
                     baseCtx.setTransform(1, 0, 0, 1, 0, 0);
                     baseCtx.clearRect(0, 0, fullW, fullH);
                     baseCtx.drawImage(
@@ -474,18 +537,7 @@
                     );
                     baseValid = true;
 
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.clearRect(0, 0, fullW, fullH);
-                    ctx.setTransform(
-                        viewScale,
-                        0,
-                        0,
-                        viewScale,
-                        viewOffsetX,
-                        viewOffsetY,
-                    );
-                    ctx.drawImage(baseCanvas, 0, 0);
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    redrawFromBase();
                 }
 
                 function updatePaletteBorderColor() {
@@ -493,50 +545,8 @@
                     backLink.style.color = fc.value;
                 }
 
-                // canvas pointer / touch interactions
+                // pointer / touch for canvas
                 canvas.addEventListener("pointerdown", (e) => {
-                    activePointers.set(e.pointerId, {
-                        x: e.clientX,
-                        y: e.clientY,
-                    });
-
-                    // start pinch when we have 2 pointers
-                    if (activePointers.size === 2) {
-                        isPinching = true;
-                        isPanning = false;
-
-                        const pts = Array.from(activePointers.values());
-                        const dx = pts[0].x - pts[1].x;
-                        const dy = pts[0].y - pts[1].y;
-                        pinchStartDist = Math.hypot(dx, dy) || 1;
-                        pinchStartZoom = zoom;
-                        pinchLastZoomFactor = 1;
-
-                        const rect = canvas.getBoundingClientRect();
-                        const sx = (pts[0].x + pts[1].x) / 2 - rect.left;
-                        const sy = (pts[0].y + pts[1].y) / 2 - rect.top;
-
-                        const world = screenToWorld(sx, sy);
-                        pinchStartWorldX = world.cx;
-                        pinchStartWorldY = world.cy;
-
-                        markInteraction();
-                        return;
-                    }
-
-                    // single-finger pan
-                    if (!isPinching && activePointers.size === 1) {
-                        isPanning = true;
-                        canvas.setPointerCapture(e.pointerId);
-                        panStartX = e.clientX;
-                        panStartY = e.clientY;
-                        panStartCenterX = centerX;
-                        panStartCenterY = centerY;
-                    }
-                });
-
-                canvas.addEventListener("pointermove", (e) => {
-                    if (!activePointers.has(e.pointerId)) return;
                     activePointers.set(e.pointerId, {
                         x: e.clientX,
                         y: e.clientY,
@@ -545,9 +555,62 @@
                     const rect = canvas.getBoundingClientRect();
                     const sx = e.clientX - rect.left;
                     const sy = e.clientY - rect.top;
+                    cursorScreenX = sx;
+                    cursorScreenY = sy;
 
-                    const world = screenToWorld(sx, sy);
-                    setCursorStatus(world.cx, world.cy);
+                    if (activePointers.size === 2) {
+                        // start pinch
+                        isPinching = true;
+                        isPanning = false;
+
+                        const pts = Array.from(activePointers.values());
+                        const dx = pts[0].x - pts[1].x;
+                        const dy = pts[0].y - pts[1].y;
+                        pinchStartDist = Math.hypot(dx, dy) || 1;
+                        pinchStartScale = viewScale;
+                        pinchStartOffsetX = viewOffsetX;
+                        pinchStartOffsetY = viewOffsetY;
+
+                        const rect2 = canvas.getBoundingClientRect();
+                        const sxMid = (pts[0].x + pts[1].x) / 2 - rect2.left;
+                        const syMid = (pts[0].y + pts[1].y) / 2 - rect2.top;
+                        pinchAnchorScreenX = sxMid;
+                        pinchAnchorScreenY = syMid;
+
+                        const world = screenToWorld(sxMid, syMid);
+                        pinchAnchorWorldX = world.cx;
+                        pinchAnchorWorldY = world.cy;
+
+                        markInteraction();
+                        return;
+                    }
+
+                    if (!isPinching && activePointers.size === 1) {
+                        isPanning = true;
+                        canvas.setPointerCapture(e.pointerId);
+                        panStartX = e.clientX;
+                        panStartY = e.clientY;
+                        panStartOffsetX = viewOffsetX;
+                        panStartOffsetY = viewOffsetY;
+                        markInteraction();
+                    }
+                });
+
+                canvas.addEventListener("pointermove", (e) => {
+                    // always keep cursor coords live
+                    const rect = canvas.getBoundingClientRect();
+                    const sx = e.clientX - rect.left;
+                    const sy = e.clientY - rect.top;
+                    cursorScreenX = sx;
+                    cursorScreenY = sy;
+
+                    if (!activePointers.has(e.pointerId)) {
+                        return;
+                    }
+                    activePointers.set(e.pointerId, {
+                        x: e.clientX,
+                        y: e.clientY,
+                    });
 
                     if (isPinching && activePointers.size === 2) {
                         const pts = Array.from(activePointers.values());
@@ -556,57 +619,54 @@
                         const dist = Math.hypot(dx, dy) || 1;
                         const zoomFactor = dist / pinchStartDist;
 
-                        zoom = pinchStartZoom * zoomFactor;
-
-                        const sxNow = (pts[0].x + pts[1].x) / 2 - rect.left;
-                        const syNow = (pts[0].y + pts[1].y) / 2 - rect.top;
-
-                        const after = screenToWorld(sxNow, syNow);
-                        centerX += pinchStartWorldX - after.cx;
-                        centerY += pinchStartWorldY - after.cy;
-
-                        // adjust interactive viewScale/offset like wheel zoom
-                        const relative =
-                            zoomFactor / (pinchLastZoomFactor || 1);
-                        const oldScale = viewScale || 1;
-                        const newScale = oldScale * relative;
-
-                        viewOffsetX =
-                            sxNow -
-                            (sxNow - viewOffsetX) * (newScale / oldScale);
-                        viewOffsetY =
-                            syNow -
-                            (syNow - viewOffsetY) * (newScale / oldScale);
+                        const newScale = pinchStartScale * zoomFactor;
                         viewScale = newScale;
 
-                        pinchLastZoomFactor = zoomFactor;
+                        // keep anchor world point fixed under anchor screen pos
+                        const baseParams = worldParamsFor(
+                            centerX,
+                            centerY,
+                            zoom,
+                        );
+                        const s = viewScale || 1;
+
+                        const uNorm =
+                            (pinchAnchorWorldX - baseParams.worldX0) /
+                            (baseParams.worldWidth || 1e-9);
+                        const vNorm =
+                            (pinchAnchorWorldY - baseParams.worldY0) /
+                            (baseParams.worldHeight || 1e-9);
+                        const baseX = uNorm * fullW;
+                        const baseY = vNorm * fullH;
+
+                        viewOffsetX = pinchAnchorScreenX - s * baseX;
+                        viewOffsetY = pinchAnchorScreenY - s * baseY;
 
                         setZoomStatus();
-                        markInteraction();
+                        redrawFromBase();
+                        interactionActive = true;
+                        lastInteractionTime = performance.now();
                         return;
                     }
 
-                    if (!isPanning || isPinching) return;
+                    if (!isPanning || isPinching) {
+                        return;
+                    }
 
                     const dx = e.clientX - panStartX;
                     const dy = e.clientY - panStartY;
 
-                    const { worldWidth, worldHeight } = currentWorldParams();
+                    viewOffsetX = panStartOffsetX + dx;
+                    viewOffsetY = panStartOffsetY + dy;
 
-                    if (worldWidth && worldHeight) {
-                        centerX =
-                            panStartCenterX - (dx / (fullW || 1)) * worldWidth;
-                        centerY =
-                            panStartCenterY - (dy / (fullH || 1)) * worldHeight;
-                    }
-
-                    viewOffsetX = dx;
-                    viewOffsetY = dy;
-
-                    markInteraction();
+                    redrawFromBase();
+                    interactionActive = true;
+                    lastInteractionTime = performance.now();
                 });
 
                 canvas.addEventListener("pointerleave", () => {
+                    cursorScreenX = null;
+                    cursorScreenY = null;
                     setCursorStatus(null, null);
                 });
 
@@ -617,7 +677,6 @@
 
                     if (isPinching && activePointers.size < 2) {
                         isPinching = false;
-                        pinchLastZoomFactor = 1;
                     }
 
                     if (!isPanning) return;
@@ -625,13 +684,14 @@
                     try {
                         canvas.releasePointerCapture(e.pointerId);
                     } catch (_) {}
-                    markInteraction();
+                    interactionActive = true;
+                    lastInteractionTime = performance.now();
                 }
 
                 canvas.addEventListener("pointerup", endPan);
                 canvas.addEventListener("pointercancel", endPan);
 
-                // mouse wheel zoom
+                // wheel zoom
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
@@ -641,37 +701,55 @@
                         const sx = e.clientX - rect.left;
                         const sy = e.clientY - rect.top;
 
-                        const before = screenToWorld(sx, sy);
+                        cursorScreenX = sx;
+                        cursorScreenY = sy;
+
+                        // use OLD transform to find the world point under the cursor
+                        const oldScale = viewScale || 1;
+                        const worldBefore = screenToWorld(sx, sy);
 
                         const delta = -e.deltaY;
                         const zoomFactor = Math.exp(delta * 0.001);
-                        zoom *= zoomFactor;
-
-                        const after = screenToWorld(sx, sy);
-                        centerX += before.cx - after.cx;
-                        centerY += before.cy - after.cy;
-
-                        const oldScale = viewScale || 1;
                         const newScale = oldScale * zoomFactor;
 
-                        viewOffsetX =
-                            sx - (sx - viewOffsetX) * (newScale / oldScale);
-                        viewOffsetY =
-                            sy - (sy - viewOffsetY) * (newScale / oldScale);
+                        // apply new scale
                         viewScale = newScale;
 
+                        // keep that world point under the same screen coords
+                        const baseParams = worldParamsFor(
+                            centerX,
+                            centerY,
+                            zoom,
+                        );
+                        const s = viewScale || 1;
+
+                        const uNorm =
+                            (worldBefore.cx - baseParams.worldX0) /
+                            (baseParams.worldWidth || 1e-9);
+                        const vNorm =
+                            (worldBefore.cy - baseParams.worldY0) /
+                            (baseParams.worldHeight || 1e-9);
+                        const baseX = uNorm * fullW;
+                        const baseY = vNorm * fullH;
+
+                        viewOffsetX = sx - s * baseX;
+                        viewOffsetY = sy - s * baseY;
+
                         setZoomStatus();
+                        redrawFromBase();
                         markInteraction();
                     },
                     { passive: false },
                 );
 
-                // palette events
+                // palette controls
                 fc.addEventListener("input", () => {
                     updatePaletteBorderColor();
-                    applyPaletteToLastGray();
+                    recolorFromLastGray();
                 });
-                bw.addEventListener("input", applyPaletteToLastGray);
+                bw.addEventListener("input", () => {
+                    recolorFromLastGray();
+                });
 
                 fillInside.addEventListener("change", () => {
                     fillInterior = fillInside.checked ? 1 : 0;
@@ -687,38 +765,8 @@
                     currentStage = -1;
                     stagePending = false;
 
-                    interactionActive = false;
-                    viewScale = 1;
-                    viewOffsetX = 0;
-                    viewOffsetY = 0;
-
                     requestFullRender();
                 });
-
-                function drawInteractiveFrame() {
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.clearRect(0, 0, fullW, fullH);
-
-                    if (!baseValid) return;
-
-                    ctx.setTransform(
-                        viewScale,
-                        0,
-                        0,
-                        viewScale,
-                        viewOffsetX,
-                        viewOffsetY,
-                    );
-                    ctx.drawImage(baseCanvas, 0, 0);
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                }
-
-                function drawStableBase() {
-                    if (!baseValid) return;
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.clearRect(0, 0, fullW, fullH);
-                    ctx.drawImage(baseCanvas, 0, 0);
-                }
 
                 function startWorkerJob(stageIndex) {
                     if (!workerReady) return;
@@ -733,10 +781,7 @@
                     currentJobId = jobId;
                     jobInFlight = true;
 
-                    const cxSnap = centerX;
-                    const cySnap = centerY;
-                    const zoomSnap = zoom;
-                    const scaleSnap = scale;
+                    const view = getCurrentView();
                     const fillSnap = fillInterior | 0;
 
                     worker.postMessage({
@@ -744,19 +789,19 @@
                         jobId,
                         fbW,
                         fbH,
-                        cx: cxSnap,
-                        cy: cySnap,
-                        zoom: zoomSnap,
-                        scale: scaleSnap,
+                        cx: view.cx,
+                        cy: view.cy,
+                        zoom: view.zoom,
+                        scale,
                         fillInterior: fillSnap,
                     });
 
                     setRenderStatus(
-                        `render: stage ${stageIndex + 1}/${STAGES.length} scale=${scaleSnap}`,
+                        `render: stage ${stageIndex + 1}/${STAGES.length} scale=${scale}`,
                     );
                 }
 
-                // solid scan band in palette color for upcoming rows
+                // scan band (optional)
                 function handleWorkerScan(msg) {
                     const { jobId, fbW, fbH, yStart, yEnd } = msg;
                     if (currentJobId === null || jobId !== currentJobId) return;
@@ -767,9 +812,12 @@
                     const destY = (yStart / fbH) * fullH;
                     const destH = (numRows / fbH) * fullH;
 
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.fillStyle = fc.value; // same as palette color
-                    ctx.fillRect(0, destY, fullW, destH);
+                    baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    baseCtx.fillStyle = fc.value;
+                    baseCtx.fillRect(0, destY, fullW, destH);
+                    baseValid = true;
+
+                    redrawFromBase();
                 }
 
                 function handleWorkerPartial(msg) {
@@ -808,10 +856,8 @@
                     const destY = (yStart / fbH) * fullH;
                     const destH = (numRows / fbH) * fullH;
 
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-                    // draw the detailed band (this overwrites the scan band for these rows)
-                    ctx.drawImage(
+                    baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    baseCtx.drawImage(
                         bufCanvas,
                         0,
                         0,
@@ -822,10 +868,13 @@
                         fullW,
                         destH,
                     );
+                    baseValid = true;
+
+                    redrawFromBase();
                 }
 
                 function handleWorkerFrame(msg) {
-                    const { jobId, fbW, fbH, gray, scale: jobScale } = msg;
+                    const { jobId, fbW, fbH, gray } = msg;
 
                     if (currentJobId === null || jobId !== currentJobId) {
                         jobInFlight = false;
@@ -845,9 +894,9 @@
                     const img = new ImageData(colored, fbW, fbH);
                     bufCtx.putImageData(img, 0, 0);
 
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.clearRect(0, 0, fullW, fullH);
-                    ctx.drawImage(
+                    baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    baseCtx.clearRect(0, 0, fullW, fullH);
+                    baseCtx.drawImage(
                         bufCanvas,
                         0,
                         0,
@@ -858,12 +907,19 @@
                         fullW,
                         fullH,
                     );
-
-                    baseCanvas.width = fullW;
-                    baseCanvas.height = fullH;
-                    baseCtx.clearRect(0, 0, fullW, fullH);
-                    baseCtx.drawImage(canvas, 0, 0);
                     baseValid = true;
+
+                    redrawFromBase();
+
+                    // fold current visual view into base center/zoom
+                    const view = getCurrentView();
+                    centerX = view.cx;
+                    centerY = view.cy;
+                    zoom = view.zoom;
+                    viewScale = 1;
+                    viewOffsetX = 0;
+                    viewOffsetY = 0;
+                    setZoomStatus();
 
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
@@ -872,9 +928,7 @@
                         setRenderStatus("idle");
                     } else {
                         setRenderStatus(
-                            `render: stage ${currentStage + 1}/${
-                                STAGES.length
-                            } scale=${STAGES[currentStage].scale}`,
+                            `render: stage ${currentStage + 1}/${STAGES.length} scale=${STAGES[currentStage].scale}`,
                         );
                     }
                 }
@@ -882,6 +936,7 @@
                 function loop() {
                     const now = performance.now();
 
+                    // after interaction settles, start staged render for current visual view
                     if (
                         interactionActive &&
                         !isPanning &&
@@ -891,21 +946,20 @@
                         workerReady
                     ) {
                         interactionActive = false;
-                        viewScale = 1;
-                        viewOffsetX = 0;
                         requestFullRender();
                     }
 
-                    if (interactionActive) {
-                        drawInteractiveFrame();
-                    } else if (stagePending && !jobInFlight) {
+                    if (stagePending && !jobInFlight) {
                         startWorkerJob(currentStage);
-                    } else if (
-                        !interactionActive &&
-                        !stagePending &&
-                        !jobInFlight
-                    ) {
-                        drawStableBase();
+                    }
+
+                    // cursor status always live
+                    if (cursorScreenX != null && cursorScreenY != null) {
+                        const world = screenToWorld(
+                            cursorScreenX,
+                            cursorScreenY,
+                        );
+                        setCursorStatus(world.cx, world.cy);
                     }
 
                     requestAnimationFrame(loop);
