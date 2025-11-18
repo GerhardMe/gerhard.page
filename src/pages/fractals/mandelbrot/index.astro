@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Mandelbrot WASM (worker, JS pan/zoom, stages, JS palette)</title>
+        <title>Mandelbrot WASM (worker)</title>
         <style>
             html,
             body {
@@ -73,6 +73,10 @@
                 Glow
                 <input type="range" id="bw" min="0" max="100" value="80" />
             </label>
+            <label>
+                <input type="checkbox" id="fillInside" checked="unchecked" />
+                Fill interior
+            </label>
             <div id="status">WASM worker loading…</div>
         </div>
 
@@ -84,44 +88,40 @@
                 const fc = document.getElementById("fc");
                 const bw = document.getElementById("bw");
                 const status = document.getElementById("status");
+                const fillInside = document.getElementById("fillInside");
 
                 fc.value = "#00ffff";
 
-                // World in complex plane (WASM: cx, cy, zoom)
+                let fillInterior = 0;
+
                 let centerX = -0.75;
                 let centerY = 0.0;
-                let zoom = 1.0; // 1 = base view (~[-2,2] across min dimension)
+                let zoom = 1.0;
 
                 let fullW = 0;
                 let fullH = 0;
 
-                // Last rendered colored frame, used for JS pan/zoom
                 const baseCanvas = document.createElement("canvas");
                 const baseCtx = baseCanvas.getContext("2d");
                 let baseValid = false;
 
-                // Offscreen buffer for each frame
                 const bufCanvas = document.createElement("canvas");
                 const bufCtx = bufCanvas.getContext("2d");
 
-                // Interactive transform applied to baseCanvas
                 let viewScale = 1;
                 let viewOffsetX = 0;
                 let viewOffsetY = 0;
 
-                // Worker / job state
                 let worker = null;
                 let workerReady = false;
                 let nextJobId = 1;
-                let currentJobId = null; // last job we care about
+                let currentJobId = null;
                 let jobInFlight = false;
 
-                // Stored grayscale for palette-only recolor
                 let lastGray = null;
                 let lastFbW = 0;
                 let lastFbH = 0;
 
-                // Rendering stages: coarse → fine → AA (<1 => AA)
                 const STAGES = [
                     { scale: 64 },
                     { scale: 32 },
@@ -129,19 +129,16 @@
                     { scale: 8 },
                     { scale: 4 },
                     { scale: 2 },
-                    { scale: 1 },
                     { scale: 0.25 },
                 ];
 
                 let currentStage = -1;
                 let stagePending = false;
 
-                // Interaction timing
                 let interactionActive = false;
                 let lastInteractionTime = 0;
-                const INTERACTION_SETTLE_MS = 200; // debounce
+                const INTERACTION_SETTLE_MS = 50;
 
-                // Panning state
                 let isPanning = false;
                 let panStartX = 0;
                 let panStartY = 0;
@@ -149,15 +146,7 @@
                 let panStartCenterY = 0;
 
                 function setStatus(msg) {
-                    const mode =
-                        currentStage >= 0
-                            ? `render-stage=${currentStage}`
-                            : interactionActive
-                              ? "interactive"
-                              : "idle";
-                    status.textContent = `${msg} | mode=${mode} | worker=${
-                        workerReady ? "on" : "off"
-                    }`;
+                    status.textContent = msg;
                 }
 
                 function hexToRgb(hex) {
@@ -173,7 +162,6 @@
                     };
                 }
 
-                // Glow slider: 0 = wide/soft, 100 = thin/bright
                 function getBandWidth() {
                     const raw = parseInt(bw.value, 10) || 0;
                     const sNorm = Math.min(1, Math.max(0, raw / 100));
@@ -183,10 +171,6 @@
                     return minW + sInv * (maxW - minW);
                 }
 
-                // Mapping must match WASM:
-                // basePixelSize = 4 / minDim; pixelSize = basePixelSize / zoom
-                // x = cx + ((i+0.5)-halfW)*pixelSize
-                // y = cy + ((j+0.5)-halfH)*pixelSize
                 function currentWorldParams() {
                     if (!fullW || !fullH) {
                         return {
@@ -259,11 +243,9 @@
                     interactionActive = true;
                     lastInteractionTime = performance.now();
 
-                    // Reset staging
                     stagePending = false;
                     currentStage = -1;
 
-                    // Cancel current worker job if any
                     if (workerReady && currentJobId != null) {
                         worker.postMessage({
                             type: "cancel",
@@ -280,7 +262,6 @@
                     stagePending = true;
                 }
 
-                // JS colorization: grayscale (0..255) → RGBA
                 function colorizeGray(gray, w, h) {
                     const N = gray.length;
                     const out = new Uint8ClampedArray(N * 4);
@@ -313,7 +294,6 @@
                     return out;
                 }
 
-                // Re-apply palette to last grayscale frame only in JS
                 function applyPaletteToLastGray() {
                     if (!lastGray || lastFbW <= 0 || lastFbH <= 0) return;
 
@@ -355,7 +335,6 @@
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                 }
 
-                // JS-only pan
                 canvas.addEventListener("pointerdown", (e) => {
                     isPanning = true;
                     canvas.setPointerCapture(e.pointerId);
@@ -399,7 +378,6 @@
                 canvas.addEventListener("pointerup", endPan);
                 canvas.addEventListener("pointercancel", endPan);
 
-                // JS-only zoom
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
@@ -433,9 +411,30 @@
                     { passive: false },
                 );
 
-                // Palette changes: JS recolor only, no new WASM
                 fc.addEventListener("input", applyPaletteToLastGray);
                 bw.addEventListener("input", applyPaletteToLastGray);
+
+                fillInside.addEventListener("change", () => {
+                    fillInterior = fillInside.checked ? 1 : 0;
+
+                    if (workerReady && currentJobId != null) {
+                        worker.postMessage({
+                            type: "cancel",
+                            jobId: currentJobId,
+                        });
+                    }
+                    currentJobId = null;
+                    jobInFlight = false;
+                    currentStage = -1;
+                    stagePending = false;
+
+                    interactionActive = false;
+                    viewScale = 1;
+                    viewOffsetX = 0;
+                    viewOffsetY = 0;
+
+                    requestFullRender();
+                });
 
                 function drawInteractiveFrame() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -479,6 +478,7 @@
                     const cySnap = centerY;
                     const zoomSnap = zoom;
                     const scaleSnap = scale;
+                    const fillSnap = fillInterior | 0;
 
                     worker.postMessage({
                         type: "render",
@@ -489,26 +489,73 @@
                         cy: cySnap,
                         zoom: zoomSnap,
                         scale: scaleSnap,
+                        fillInterior: fillSnap,
                     });
 
                     setStatus(
-                        `sending stage=${stageIndex} scale=${scaleSnap} fb=${fbW}x${fbH}`,
+                        `stage=${stageIndex} scale=${scaleSnap} fb=${fbW}x${fbH}`,
+                    );
+                }
+
+                function handleWorkerPartial(msg) {
+                    const { jobId, fbW, fbH, gray, yStart, yEnd } = msg;
+
+                    if (currentJobId === null || jobId !== currentJobId) {
+                        return;
+                    }
+
+                    const numRows = yEnd - yStart;
+                    if (numRows <= 0) return;
+
+                    if (!lastGray || lastFbW !== fbW || lastFbH !== fbH) {
+                        lastGray = new Uint8Array(fbW * fbH);
+                        lastFbW = fbW;
+                        lastFbH = fbH;
+                    }
+
+                    for (let row = 0; row < numRows; row++) {
+                        const srcBase = row * fbW;
+                        const dstRow = yStart + row;
+                        const dstBase = dstRow * fbW;
+                        lastGray.set(
+                            gray.subarray(srcBase, srcBase + fbW),
+                            dstBase,
+                        );
+                    }
+
+                    const coloredBand = colorizeGray(gray, fbW, numRows);
+
+                    bufCanvas.width = fbW;
+                    bufCanvas.height = numRows;
+                    const img = new ImageData(coloredBand, fbW, numRows);
+                    bufCtx.putImageData(img, 0, 0);
+
+                    const destY = (yStart / fbH) * fullH;
+                    const destH = (numRows / fbH) * fullH;
+
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+                    // colored leading band across whole width
+                    ctx.fillStyle = fc.value;
+                    ctx.fillRect(0, destY, fullW, destH);
+
+                    // overlay detailed band
+                    ctx.drawImage(
+                        bufCanvas,
+                        0,
+                        0,
+                        fbW,
+                        numRows,
+                        0,
+                        destY,
+                        fullW,
+                        destH,
                     );
                 }
 
                 function handleWorkerFrame(msg) {
-                    const {
-                        jobId,
-                        fbW,
-                        fbH,
-                        gray,
-                        cx: jobCx,
-                        cy: jobCy,
-                        zoom: jobZoom,
-                        scale: jobScale,
-                    } = msg;
+                    const { jobId, fbW, fbH, gray, scale: jobScale } = msg;
 
-                    // If we have started a newer job since this one, ignore
                     if (currentJobId === null || jobId !== currentJobId) {
                         jobInFlight = false;
                         return;
@@ -516,7 +563,6 @@
 
                     jobInFlight = false;
 
-                    // Store grayscale for palette-only recolor
                     lastGray = new Uint8Array(gray);
                     lastFbW = fbW;
                     lastFbH = fbH;
@@ -548,9 +594,7 @@
                     baseCtx.drawImage(canvas, 0, 0);
                     baseValid = true;
 
-                    setStatus(
-                        `done stage=${currentStage} fb=${fbW}x${fbH} scale=${jobScale}`,
-                    );
+                    setStatus(`done stage=${currentStage} scale=${jobScale}`);
 
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
@@ -563,7 +607,6 @@
                 function loop() {
                     const now = performance.now();
 
-                    // After interaction settles, schedule staged render
                     if (
                         interactionActive &&
                         !isPanning &&
@@ -571,20 +614,6 @@
                         currentStage === -1 &&
                         workerReady
                     ) {
-                        // Keep last interactive frame as base to avoid jump
-                        try {
-                            const snapshot = ctx.getImageData(
-                                0,
-                                0,
-                                fullW,
-                                fullH,
-                            );
-                            baseCanvas.width = fullW;
-                            baseCanvas.height = fullH;
-                            baseCtx.putImageData(snapshot, 0, 0);
-                            baseValid = true;
-                        } catch (_) {}
-
                         interactionActive = false;
                         viewScale = 1;
                         viewOffsetX = 0;
@@ -596,7 +625,11 @@
                         drawInteractiveFrame();
                     } else if (stagePending && !jobInFlight) {
                         startWorkerJob(currentStage);
-                    } else {
+                    } else if (
+                        !interactionActive &&
+                        !stagePending &&
+                        !jobInFlight
+                    ) {
                         drawStableBase();
                     }
 
@@ -604,6 +637,7 @@
                 }
 
                 function initWorker() {
+                    // worker script in public/
                     worker = new Worker("/mandel-worker.js");
                     worker.onmessage = (e) => {
                         const msg = e.data;
@@ -614,15 +648,13 @@
                             requestFullRender();
                             return;
                         }
-                        if (msg.type === "error") {
-                            jobInFlight = false;
-                            stagePending = false;
-                            currentStage = -1;
-                            setStatus("worker error: " + msg.message);
+                        if (msg.type === "partial") {
+                            handleWorkerPartial(msg);
                             return;
                         }
                         if (msg.type === "frame") {
                             handleWorkerFrame(msg);
+                            return;
                         }
                     };
                 }

@@ -96,14 +96,31 @@ static int auto_max_iter(double zoom)
     return it;
 }
 
+// Map iteration value to [0,1] including interior handling.
+// fillInterior == 0 → interior black (hollow).
+// fillInterior != 0 → interior white (solid).
+static double normalized_escape(double t, int maxIter, int fillInterior)
+{
+    if (t >= (double)maxIter)
+    {
+        return fillInterior ? 1.0 : 0.0;
+    }
+    if (t <= 0.0)
+    {
+        return 0.0;
+    }
+    return t / (double)maxIter;
+}
+
 // Render a horizontal band y in [yStart, yEnd).
-// cx, cy : center in complex plane
-// zoom   : zoom factor (1 = base view, >1 zoom in)
-// scale  :
+// cx, cy       : center in complex plane
+// zoom         : zoom factor (1 = base view, >1 zoom in)
+// scale        :
 //    scale >= 1 : block mode, block ~ scale pixels
 //    0 < scale < 1 : AA mode, samplesPerDim ~ 1/scale
+// fillInterior : 0 = hollow (black interior), non-zero = filled (white interior)
 void render_rows(double cx, double cy, double zoom, double scale,
-                 int yStart, int yEnd)
+                 int yStart, int yEnd, int fillInterior)
 {
     if (!framebuffer || fbW <= 0 || fbH <= 0)
         return;
@@ -157,16 +174,7 @@ void render_rows(double cx, double cy, double zoom, double scale,
                 double x = cx + (center_i - halfW) * pixelSize;
 
                 double t = mandel(x, y, maxIter);
-
-                double n;
-                if (t >= (double)maxIter || t <= 0.0)
-                {
-                    n = 0.0;
-                }
-                else
-                {
-                    n = t / (double)maxIter;
-                }
+                double n = normalized_escape(t, maxIter, fillInterior);
 
                 if (n < 0.0)
                     n = 0.0;
@@ -227,16 +235,7 @@ void render_rows(double cx, double cy, double zoom, double scale,
                         double x = x0 + dx;
 
                         double t = mandel(x, y, maxIter);
-
-                        double n;
-                        if (t >= (double)maxIter || t <= 0.0)
-                        {
-                            n = 0.0;
-                        }
-                        else
-                        {
-                            n = t / (double)maxIter;
-                        }
+                        double n = normalized_escape(t, maxIter, fillInterior);
 
                         sum += n;
                     }
@@ -259,8 +258,8 @@ void render_rows(double cx, double cy, double zoom, double scale,
     }
 }
 
-// Convenience: full-frame render (used only as a fallback from JS)
-void render_frame(double cx, double cy, double zoom, double scale)
+// Convenience: full-frame render (fallback)
+void render_frame(double cx, double cy, double zoom, double scale, int fillInterior)
 {
-    render_rows(cx, cy, zoom, scale, 0, fbH);
+    render_rows(cx, cy, zoom, scale, 0, fbH, fillInterior);
 }
