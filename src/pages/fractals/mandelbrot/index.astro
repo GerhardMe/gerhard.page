@@ -74,7 +74,8 @@
                 <input type="range" id="bw" min="0" max="100" value="80" />
             </label>
             <label>
-                <input type="checkbox" id="fillInside" checked="unchecked" />
+                <!-- default: fill interior ON -->
+                <input type="checkbox" id="fillInside" checked />
                 Fill interior
             </label>
             <div id="status">WASM worker loading…</div>
@@ -92,7 +93,8 @@
 
                 fc.value = "#00ffff";
 
-                let fillInterior = 0;
+                // initialize from checkbox state so it's respected on first render
+                let fillInterior = fillInside.checked ? 1 : 0;
 
                 let centerX = -0.75;
                 let centerY = 0.0;
@@ -497,6 +499,22 @@
                     );
                 }
 
+                // solid scan band in palette color for upcoming rows
+                function handleWorkerScan(msg) {
+                    const { jobId, fbW, fbH, yStart, yEnd } = msg;
+                    if (currentJobId === null || jobId !== currentJobId) return;
+
+                    const numRows = yEnd - yStart;
+                    if (numRows <= 0) return;
+
+                    const destY = (yStart / fbH) * fullH;
+                    const destH = (numRows / fbH) * fullH;
+
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.fillStyle = fc.value; // same as palette color
+                    ctx.fillRect(0, destY, fullW, destH);
+                }
+
                 function handleWorkerPartial(msg) {
                     const { jobId, fbW, fbH, gray, yStart, yEnd } = msg;
 
@@ -535,11 +553,7 @@
 
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-                    // colored leading band across whole width
-                    ctx.fillStyle = fc.value;
-                    ctx.fillRect(0, destY, fullW, destH);
-
-                    // overlay detailed band
+                    // draw the detailed band (this overwrites the scan band for these rows)
                     ctx.drawImage(
                         bufCanvas,
                         0,
@@ -637,7 +651,6 @@
                 }
 
                 function initWorker() {
-                    // worker script in public/
                     worker = new Worker("/mandel-worker.js");
                     worker.onmessage = (e) => {
                         const msg = e.data;
@@ -646,6 +659,10 @@
                             setStatus("worker ready");
                             resize();
                             requestFullRender();
+                            return;
+                        }
+                        if (msg.type === "scan") {
+                            handleWorkerScan(msg);
                             return;
                         }
                         if (msg.type === "partial") {
