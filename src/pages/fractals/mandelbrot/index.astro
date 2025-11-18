@@ -130,11 +130,14 @@
                 let fbPtr = 0;
                 let fbView = null;
 
-                // All stages use same maxIter; stages differ only in pixel size.
+                // Store last grayscale stage for palette-only recolor
+                let lastGray = null;
+                let lastFbW = 0;
+                let lastFbH = 0;
+
                 const MAX_ITER = 500;
 
                 // Progressive pixel sizes:
-                // 64, 32, 16, 8, 4, 2, 1, 0.5 (last one is 2x resolution downscaled)
                 const STAGES = [
                     { pixelSize: 64, samplesDim: 1 },
                     { pixelSize: 32, samplesDim: 1 },
@@ -145,9 +148,6 @@
                     { pixelSize: 1, samplesDim: 1 },
                     { pixelSize: 1, samplesDim: 4 },
                 ];
-
-                // Hard pixel cap to avoid OOM
-                const MAX_PIXELS = 1_000_000; // ~4 MB framebuffer
 
                 let currentStage = -1;
                 let stagePending = false;
@@ -242,6 +242,7 @@
 
                     if (wasmReady) {
                         fbView = null;
+                        lastGray = null;
                         requestFullRender();
                     }
                 }
@@ -254,6 +255,9 @@
                 function markInteraction() {
                     interactionActive = true;
                     lastInteractionTime = performance.now();
+                    // abort current staged render immediately
+                    stagePending = false;
+                    currentStage = -1;
                 }
 
                 function requestFullRender() {
@@ -293,6 +297,51 @@
                         out[o++] = 255;
                     }
                     return out;
+                }
+
+                // Re-apply palette to last grayscale frame only in JS
+                function applyPaletteToLastGray() {
+                    if (!lastGray || lastFbW <= 0 || lastFbH <= 0) return;
+
+                    const colored = colorizeGray(lastGray, lastFbW, lastFbH);
+
+                    // update bufCanvas
+                    bufCanvas.width = lastFbW;
+                    bufCanvas.height = lastFbH;
+                    const img = new ImageData(colored, lastFbW, lastFbH);
+                    bufCtx.putImageData(img, 0, 0);
+
+                    // update baseCanvas at full screen size
+                    baseCanvas.width = fullW;
+                    baseCanvas.height = fullH;
+                    baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    baseCtx.clearRect(0, 0, fullW, fullH);
+                    baseCtx.drawImage(
+                        bufCanvas,
+                        0,
+                        0,
+                        lastFbW,
+                        lastFbH,
+                        0,
+                        0,
+                        fullW,
+                        fullH,
+                    );
+                    baseValid = true;
+
+                    // draw to visible canvas respecting current view transform
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.clearRect(0, 0, fullW, fullH);
+                    ctx.setTransform(
+                        viewScale,
+                        0,
+                        0,
+                        viewScale,
+                        viewOffsetX,
+                        viewOffsetY,
+                    );
+                    ctx.drawImage(baseCanvas, 0, 0);
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
                 }
 
                 // JS-only pan
@@ -372,28 +421,13 @@
                     { passive: false },
                 );
 
-                // ---------- FIXED PALETTE HANDLING ----------
-                function handlePaletteChange() {
-                    // Throw away current base image
-                    baseValid = false;
-                    // Cancel any in-progress stage
-                    stagePending = false;
-                    currentStage = -1;
-
-                    // This is not an "interaction" in the pan/zoom sense;
-                    // go straight into a fresh staged render.
-                    interactionActive = false;
-                    isPanning = false;
-                    viewScale = 1;
-                    viewOffsetX = 0;
-                    viewOffsetY = 0;
-
-                    requestFullRender();
-                }
-
-                fc.addEventListener("input", handlePaletteChange);
-                bw.addEventListener("input", handlePaletteChange);
-                // ---------- END FIX ----------
+                // Palette changes: JS recolor only, no new WASM
+                fc.addEventListener("input", () => {
+                    applyPaletteToLastGray();
+                });
+                bw.addEventListener("input", () => {
+                    applyPaletteToLastGray();
+                });
 
                 function drawInteractiveFrame() {
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -432,11 +466,9 @@
                     }
 
                     const stage = STAGES[stageIndex];
-                    const pixelSize = stage.pixelSize; // 64, 32, ..., 1, 0.5
+                    const pixelSize = stage.pixelSize;
                     const samplesDim = stage.samplesDim;
 
-                    // pixelSize = how many screen pixels one computed pixel covers.
-                    // So framebuffer resolution is fullW/pixelSize × fullH/pixelSize.
                     const baseFactor = 1 / pixelSize;
                     let targetW = Math.max(1, Math.floor(fullW * baseFactor));
                     let targetH = Math.max(1, Math.floor(fullH * baseFactor));
@@ -480,7 +512,12 @@
                         gray[i] = fbView[j];
                     }
 
-                    // Colorize
+                    // store for palette-only recolor
+                    lastGray = gray;
+                    lastFbW = fbW;
+                    lastFbH = fbH;
+
+                    // Colorize with current palette
                     const colored = colorizeGray(gray, fbW, fbH);
 
                     // Put into temporary canvas
