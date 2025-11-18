@@ -1,4 +1,6 @@
 (function () {
+    // ------------------ DOM refs ------------------
+
     const canvas = document.getElementById("view");
     const ctx = canvas.getContext("2d");
 
@@ -60,7 +62,7 @@
         updateStatus();
     }
 
-    // ------------------ world / base view ------------------
+    // ------------------ world / framebuffer ------------------
 
     let centerX = -0.75;
     let centerY = 0.0;
@@ -103,15 +105,18 @@
     let currentStage = -1;
     let stagePending = false;
 
-    // NEW: per-job flag – first worker message triggers commit+reset
-    let jobFirstChunk = false;
+    // ------------------ interaction state ------------------
 
-    // interaction throttling
     let interactionActive = false;
     let lastInteractionTime = 0;
     const INTERACTION_SETTLE_MS = 50;
 
-    // pan state
+    function touchInteraction() {
+        interactionActive = true;
+        lastInteractionTime = performance.now();
+    }
+
+    // pan
     let isPanning = false;
     let panStartX = 0;
     let panStartY = 0;
@@ -133,39 +138,11 @@
     let pinchAnchorWorldX = 0;
     let pinchAnchorWorldY = 0;
 
-    // cursor tracking – always live
+    // cursor
     let cursorScreenX = null;
     let cursorScreenY = null;
 
     // ------------------ helpers ------------------
-
-    function nowMs() {
-        return performance.now();
-    }
-
-    function touchInteraction() {
-        interactionActive = true;
-        lastInteractionTime = nowMs();
-    }
-
-    function markInteraction() {
-        interactionActive = true;
-        lastInteractionTime = nowMs();
-
-        // stop current staged render; we will start a new one after settle
-        stagePending = false;
-        currentStage = -1;
-        cancelCurrentJob();
-    }
-
-    function cancelCurrentJob() {
-        if (workerReady && currentJobId != null) {
-            worker.postMessage({ type: "cancel", jobId: currentJobId });
-        }
-        currentJobId = null;
-        jobInFlight = false;
-        jobFirstChunk = false;
-    }
 
     function hexToRgb(hex) {
         let h = hex.replace("#", "");
@@ -189,7 +166,6 @@
         return minW + sInv * (maxW - minW);
     }
 
-    // world rect for a given center/zoom
     function worldParamsFor(cX, cY, z) {
         if (!fullW || !fullH) {
             return {
@@ -214,7 +190,6 @@
         return { worldWidth, worldHeight, worldX0, worldY0 };
     }
 
-    // screen -> world using base view + current transform
     function screenToWorld(sx, sy) {
         const { worldWidth, worldHeight, worldX0, worldY0 } = worldParamsFor(
             centerX,
@@ -237,7 +212,6 @@
         return { cx, cy };
     }
 
-    // current visual view (center/zoom) from transform + base view
     function getCurrentView() {
         const effectiveZoom = zoom * (viewScale || 1);
         const baseParams = worldParamsFor(centerX, centerY, zoom);
@@ -302,6 +276,20 @@
         touchInteraction();
     });
 
+    function markInteraction() {
+        interactionActive = true;
+        lastInteractionTime = performance.now();
+
+        stagePending = false;
+        currentStage = -1;
+
+        if (workerReady && currentJobId != null) {
+            worker.postMessage({ type: "cancel", jobId: currentJobId });
+        }
+        currentJobId = null;
+        jobInFlight = false;
+    }
+
     function requestFullRender() {
         if (!workerReady) return;
         currentStage = 0;
@@ -309,7 +297,8 @@
         setErrorStatus("");
     }
 
-    // special-case interior (full white) when fill is enabled
+    // ------------------ drawing helpers ------------------
+
     function colorizeGray(gray) {
         const N = gray.length;
         const out = new Uint8ClampedArray(N * 4);
@@ -362,7 +351,6 @@
 
         bufCanvas.width = fbW;
         bufCanvas.height = fbH;
-
         const img = new ImageData(colored, fbW, fbH);
         bufCtx.putImageData(img, 0, 0);
 
@@ -383,23 +371,46 @@
         backLink.style.color = fc.value;
     }
 
-    // ---------- commit visual transform once per job, right before first draw ----------
+    // ------------------ bake zoom/pan into base + reset view ------------------
 
-    function commitVisualToBaseOnceForJob() {
-        if (!jobFirstChunk) return;
-        jobFirstChunk = false;
+    function bakeTransformIntoBase() {
+        if (!baseValid) return;
+        if (viewScale === 1 && viewOffsetX === 0 && viewOffsetY === 0) return;
 
-        const view = getCurrentView(); // uses current viewScale + offsets
+        const tmp = document.createElement("canvas");
+        tmp.width = fullW;
+        tmp.height = fullH;
+        const tctx = tmp.getContext("2d");
 
+        // apply current interactive transform to base into tmp
+        tctx.setTransform(viewScale, 0, 0, viewScale, viewOffsetX, viewOffsetY);
+        tctx.drawImage(baseCanvas, 0, 0);
+
+        // copy back to baseCanvas at identity
+        baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+        baseCtx.clearRect(0, 0, fullW, fullH);
+        baseCtx.drawImage(tmp, 0, 0);
+        baseValid = true;
+    }
+
+    function commitVisualAndReset() {
+        const view = getCurrentView(); // uses current viewScale/offset
+
+        // bake the zoomed/panned image into base as a quick preview
+        bakeTransformIntoBase();
+
+        // commit world view
         centerX = view.cx;
         centerY = view.cy;
         zoom = view.zoom;
 
+        // reset interactive transform
         viewScale = 1;
         viewOffsetX = 0;
         viewOffsetY = 0;
-
         setZoomStatus();
+
+        redrawFromBase();
     }
 
     // ------------------ canvas pointer / touch ------------------
@@ -414,15 +425,13 @@
         cursorScreenY = sy;
 
         if (activePointers.size === 2) {
-            // start pinch
             isPinching = true;
             isPanning = false;
 
             const pts = Array.from(activePointers.values());
             const dx = pts[0].x - pts[1].x;
             const dy = pts[0].y - pts[1].y;
-            const dist = Math.hypot(dx, dy) || 1;
-            pinchStartDist = dist;
+            pinchStartDist = Math.hypot(dx, dy) || 1;
             pinchStartScale = viewScale;
 
             const sxMid = (pts[0].x + pts[1].x) / 2 - rect.left;
@@ -468,7 +477,6 @@
 
             viewScale = pinchStartScale * zoomFactor;
 
-            // keep anchor world point fixed
             lockWorldPointToScreen(
                 pinchAnchorWorldX,
                 pinchAnchorWorldY,
@@ -524,7 +532,6 @@
     canvas.addEventListener("pointerup", endPan);
     canvas.addEventListener("pointercancel", endPan);
 
-    // wheel zoom
     canvas.addEventListener(
         "wheel",
         (e) => {
@@ -565,13 +572,19 @@
 
     fillInside.addEventListener("change", () => {
         fillInterior = fillInside.checked ? 1 : 0;
-        cancelCurrentJob();
+
+        if (workerReady && currentJobId != null) {
+            worker.postMessage({ type: "cancel", jobId: currentJobId });
+        }
+        currentJobId = null;
+        jobInFlight = false;
         currentStage = -1;
         stagePending = false;
+
         requestFullRender();
     });
 
-    // ------------------ worker communication ------------------
+    // ------------------ worker ------------------
 
     function startWorkerJob(stageIndex) {
         if (!workerReady) return;
@@ -585,7 +598,6 @@
         const jobId = nextJobId++;
         currentJobId = jobId;
         jobInFlight = true;
-        jobFirstChunk = true; // next worker message will commit/reset view
 
         const view = getCurrentView();
         const fillSnap = fillInterior | 0;
@@ -607,15 +619,11 @@
         );
     }
 
-    // only draw scan lines for the last (finest) stage
     function handleWorkerScan(msg) {
         const { jobId, fbW, fbH, yStart, yEnd } = msg;
         if (currentJobId === null || jobId !== currentJobId) return;
 
         if (currentStage !== STAGES.length - 1) return;
-
-        // first message for this job: commit visual view and reset transform
-        commitVisualToBaseOnceForJob();
 
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
@@ -633,11 +641,7 @@
 
     function handleWorkerPartial(msg) {
         const { jobId, fbW, fbH, gray, yStart, yEnd } = msg;
-
         if (currentJobId === null || jobId !== currentJobId) return;
-
-        // first message for this job: commit visual view and reset transform
-        commitVisualToBaseOnceForJob();
 
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
@@ -682,28 +686,33 @@
         redrawFromBase();
     }
 
-    // final frame
     function handleWorkerFrame(msg) {
         const { jobId, fbW, fbH, gray } = msg;
-
         if (currentJobId === null || jobId !== currentJobId) {
             jobInFlight = false;
             return;
         }
 
-        // first message for this job might be the frame itself
-        commitVisualToBaseOnceForJob();
-
         jobInFlight = false;
+
+        const view = getCurrentView();
 
         lastGray = new Uint8Array(gray);
         lastFbW = fbW;
         lastFbH = fbH;
 
         redrawFullColored(lastGray, fbW, fbH);
-        redrawFromBase();
 
-        currentJobId = null;
+        // fold view into base world (as before)
+        centerX = view.cx;
+        centerY = view.cy;
+        zoom = view.zoom;
+        viewScale = 1;
+        viewOffsetX = 0;
+        viewOffsetY = 0;
+        setZoomStatus();
+
+        redrawFromBase();
 
         currentStage++;
         stagePending = currentStage < STAGES.length;
@@ -784,9 +793,8 @@
     // ------------------ main loop ------------------
 
     function loop() {
-        const now = nowMs();
+        const now = performance.now();
 
-        // after interaction settles, start staged render for current visual view
         if (
             interactionActive &&
             !isPanning &&
@@ -796,6 +804,7 @@
             workerReady
         ) {
             interactionActive = false;
+            commitVisualAndReset();
             requestFullRender();
         }
 
@@ -803,7 +812,6 @@
             startWorkerJob(currentStage);
         }
 
-        // cursor status always live
         if (cursorScreenX != null && cursorScreenY != null) {
             const world = screenToWorld(cursorScreenX, cursorScreenY);
             setCursorStatus(world.cx, world.cy);
