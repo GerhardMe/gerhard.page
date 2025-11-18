@@ -22,9 +22,9 @@
     function updateStatus() {
         const parts = [];
         if (statusRender) parts.push(statusRender);
-        if (statusCursor) parts.push(statusCursor);
         if (statusZoom) parts.push(statusZoom);
         if (statusError) parts.push(statusError);
+        if (statusCursor) parts.push(statusCursor);
         statusEl.textContent = parts.join(" | ");
     }
 
@@ -291,6 +291,7 @@
         setErrorStatus("");
     }
 
+    // UPDATED: special-case interior (full white) when fill is enabled
     function colorizeGray(gray, w, h) {
         const N = gray.length;
         const out = new Uint8ClampedArray(N * 4);
@@ -300,15 +301,24 @@
 
         let o = 0;
         for (let i = 0; i < N; i++) {
-            const gNorm = gray[i] / 255;
+            const v = gray[i] | 0;
+            const gNorm = v / 255;
             let r, g, b;
 
             if (gNorm <= 0) {
                 r = g = b = 0;
             } else {
                 let wVal;
-                if (gNorm >= bandWidth) wVal = 1;
-                else wVal = gNorm / bandWidth;
+
+                const isFilledInterior = fillInterior && v === 255;
+
+                if (isFilledInterior) {
+                    // interior pixels get full palette color, no dimming
+                    wVal = 1;
+                } else {
+                    if (gNorm >= bandWidth) wVal = 1;
+                    else wVal = gNorm / bandWidth;
+                }
 
                 r = color.r * wVal;
                 g = color.g * wVal;
@@ -613,10 +623,13 @@
         );
     }
 
-    // scan band (optional)
+    // UPDATED: only draw scan lines for the last (finest) stage
     function handleWorkerScan(msg) {
         const { jobId, fbW, fbH, yStart, yEnd } = msg;
         if (currentJobId === null || jobId !== currentJobId) return;
+
+        // only show scan bands on the final stage
+        if (currentStage !== STAGES.length - 1) return;
 
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
