@@ -304,32 +304,37 @@
         const out = new Uint8ClampedArray(N * 4);
 
         const color = hexToRgb(fc.value);
-        const raw = Math.max(0, Math.min(100, parseInt(bw.value, 10) || 0));
+        const rawFull = parseInt(bw.value, 10) || 0;
+        const raw = Math.max(0, Math.min(100, rawFull)); // 0..100
 
-        // mode:
-        //   0–49 : your original low-blur curve (smooth)
-        //   50   : pure “colorized grayscale” (linear)
-        //   51–100 : band/burn mode near the set
-        const isLowBlur = raw < 50;
+        const isLowBlur = raw <= 50;
         const isHighBlur = raw > 50;
 
-        // ----- low blur params: reuse your original exponent logic but only for 0–50 -----
+        // ----- low-blur (0..50): original exponent → smoothly morphs to linear at 50 -----
         let lowExp = null;
+        let lowToLinear = 0;
         if (isLowBlur) {
-            const clamped = raw;          // 0..49
-            const t = clamped / 100;      // keep same curve as before
-            const minExp = 0.25;          // really slack
-            const maxExp = 3.0;           // very exponential
-            lowExp = minExp + (1 - t) * (maxExp - minExp);
+            const clamped = raw;          // 0..50
+            const tOrig = clamped / 100;
+            const minExp = 0.25;
+            const maxExp = 3.0;
+            lowExp = minExp + (1 - tOrig) * (maxExp - minExp);
+
+            // 0 -> pure original curve, 50 -> pure linear
+            lowToLinear = clamped / 50;   // 0..1
         }
 
-        // ----- high blur params: band burn near the set -----
+        // ----- high-blur (50..100): burn band → smoothly morphs to linear at 50 -----
         let bandWidth = null;
+        let highToLinear = 0;
         if (isHighBlur) {
             const u = (raw - 50) / 50; // 0..1 for 50→100
-            // bandWidth close to 1 at 51 (thin bright band),
-            // shrinking toward 0.2 at 100 (wider “burn”)
+            // 50 -> bandWidth ~1 (thin bright band)
+            // 100 -> bandWidth ~0.2 (wide burn)
             bandWidth = 1 - 0.8 * u;  // 1 → 0.2
+
+            // 50 -> pure linear, 100 -> pure burn
+            highToLinear = (100 - raw) / 50; // 1..0
         }
 
         let o = 0;
@@ -342,25 +347,27 @@
                 r = g = b = 0;
             } else {
                 let wVal;
-
                 const isFilledInterior = fillInterior && v === 255;
 
                 if (isFilledInterior) {
                     // always fully saturated for inside-set white pixels
                     wVal = 1;
                 } else if (isLowBlur) {
-                    // your original “blur” behavior (exponential curve)
-                    wVal = Math.pow(gNorm, lowExp);
-                    if (wVal < 0) wVal = 0;
-                    if (wVal > 1) wVal = 1;
-                } else if (isHighBlur) {
-                    // “burn” mode: pixels close to the set (bright gray)
-                    // saturate aggressively.
-                    // gNorm >= bandWidth -> full color
-                    wVal = gNorm >= bandWidth ? 1 : gNorm / bandWidth;
+                    // your original exponent curve
+                    let base = Math.pow(gNorm, lowExp);
+                    if (base < 0) base = 0;
+                    if (base > 1) base = 1;
+
+                    // blend toward linear as bw → 50
+                    // lowToLinear = 0 at bw=0, 1 at bw=50
+                    wVal = base * (1 - lowToLinear) + gNorm * lowToLinear;
                 } else {
-                    // raw === 50: pure linear “replace grayscale with color”
-                    wVal = gNorm;
+                    // isHighBlur: burn band near the set
+                    let burn = gNorm >= bandWidth ? 1 : gNorm / bandWidth;
+
+                    // blend toward linear as bw → 50
+                    // highToLinear = 1 at bw=50, 0 at bw=100
+                    wVal = burn * (1 - highToLinear) + gNorm * highToLinear;
                 }
 
                 r = color.r * wVal;
@@ -376,7 +383,6 @@
 
         return out;
     }
-
 
     function redrawFromBase() {
         if (!baseValid) return;
