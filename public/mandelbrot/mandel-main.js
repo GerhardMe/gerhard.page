@@ -297,6 +297,18 @@
         setErrorStatus("");
     }
 
+    // ------------------ palette curve ------------------
+
+    function getColorExponent() {
+        // bw 100 -> linear, bw 0 -> strong falloff
+        const raw = parseInt(bw.value, 10) || 0; // 0..100
+        const t = Math.min(1, Math.max(0, raw / 100)); // 0..1
+
+        const minExp = 0.25;  // realy slack
+        const maxExp = 3.0;  // very exponential
+        return minExp + (1 - t) * (maxExp - minExp);
+    }
+
     // ------------------ drawing helpers ------------------
 
     function colorizeGray(gray) {
@@ -304,7 +316,7 @@
         const out = new Uint8ClampedArray(N * 4);
 
         const color = hexToRgb(fc.value);
-        const bandWidth = getBandWidth();
+        const exp = getColorExponent();
 
         let o = 0;
         for (let i = 0; i < N; i++) {
@@ -315,14 +327,10 @@
             if (gNorm <= 0) {
                 r = g = b = 0;
             } else {
-                let wVal;
-                const isFilledInterior = fillInterior && v === 255;
+                let wVal = Math.pow(gNorm, exp);
 
-                if (isFilledInterior) {
-                    wVal = 1;
-                } else {
-                    wVal = gNorm >= bandWidth ? 1 : gNorm / bandWidth;
-                }
+                if (wVal < 0) wVal = 0;
+                if (wVal > 1) wVal = 1;
 
                 r = color.r * wVal;
                 g = color.g * wVal;
