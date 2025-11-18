@@ -15,6 +15,19 @@
                 font-family: system-ui, sans-serif;
                 overflow: hidden;
             }
+
+            #app {
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+            }
+
+            #canvasWrapper {
+                position: relative;
+                flex: 1 1 auto;
+                overflow: hidden;
+            }
+
             canvas {
                 width: 100%;
                 height: 100%;
@@ -25,60 +38,133 @@
             canvas:active {
                 cursor: grabbing;
             }
+
+            /* Palette / controls box */
             #controls {
                 position: fixed;
-                top: 10px;
-                left: 10px;
-                padding: 6px 8px;
+                top: 16px;
+                left: 16px;
+                padding: 8px 10px;
                 background: rgba(0, 0, 0, 0.75);
-                border-radius: 6px;
+                border-radius: 4px;
+                border: 1px solid transparent; /* updated from JS to match palette color */
                 font-size: 12px;
                 z-index: 10;
                 user-select: none;
+                box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
             }
+
+            #controlsHeader {
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                margin-bottom: 6px;
+                cursor: move; /* drag handle */
+            }
+
+            #controls .controls-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 4px;
+            }
+
             #controls label {
                 display: flex;
                 align-items: center;
                 gap: 4px;
-                margin-bottom: 4px;
+                margin: 0;
             }
+
             #controls input[type="color"] {
-                width: 20px;
-                height: 20px;
+                width: 26px;
+                height: 26px;
                 padding: 0;
-                border: none;
-                background: transparent;
+                border-radius: 2px;
+                border: 1px solid #555;
+                background: #111;
+                box-sizing: border-box;
             }
+
+            #controls input[type="checkbox"] {
+                margin: 0;
+            }
+
             #controls input[type="range"] {
-                width: 140px;
+                width: 160px;
+                margin: 2px 0 0 0;
+                border-radius: 2px;
             }
-            #status {
-                margin-top: 4px;
-                opacity: 0.7;
+
+            /* Bottom status bar */
+            #statusBar {
+                flex: 0 0 auto;
+                height: 26px;
+                padding: 4px 8px;
+                background: #050505;
+                border-top: 1px solid #222;
+                font-size: 11px;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
                     Consolas, "Liberation Mono", "Courier New", monospace;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                overflow: hidden;
+                opacity: 0.8;
+                gap: 8px;
+            }
+
+            #backLink {
+                text-decoration: underline;
+                color: #00ffff; /* updated from JS to match palette color */
+                cursor: pointer;
+                white-space: nowrap;
+                flex: 0 0 auto;
+            }
+
+            #status {
+                flex: 1 1 auto;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
         </style>
     </head>
     <body>
-        <canvas id="view"></canvas>
+        <div id="app">
+            <div id="canvasWrapper">
+                <canvas id="view"></canvas>
 
-        <div id="controls">
-            <div><strong>Palette</strong></div>
-            <label>
-                Color
-                <input type="color" id="fc" />
-            </label>
-            <label>
-                Glow
-                <input type="range" id="bw" min="0" max="100" value="80" />
-            </label>
-            <label>
-                <!-- default: fill interior ON -->
-                <input type="checkbox" id="fillInside" checked />
-                Fill interior
-            </label>
-            <div id="status">WASM worker loading…</div>
+                <div id="controls">
+                    <div id="controlsHeader">Palette</div>
+                    <div class="controls-row">
+                        <label>
+                            Color
+                            <input type="color" id="fc" />
+                        </label>
+                        <label>
+                            <input type="checkbox" id="fillInside" checked />
+                            Fill interior
+                        </label>
+                    </div>
+                    <div class="controls-row">
+                        <label style="flex: 1 1 auto">
+                            Glow
+                            <input
+                                type="range"
+                                id="bw"
+                                min="0"
+                                max="100"
+                                value="80"
+                            />
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="statusBar">
+                <a id="backLink" href="../">back</a>
+                <div id="status">WASM worker loading…</div>
+            </div>
         </div>
 
         <script>
@@ -86,12 +172,60 @@
                 const canvas = document.getElementById("view");
                 const ctx = canvas.getContext("2d");
 
+                const controls = document.getElementById("controls");
+                const controlsHeader =
+                    document.getElementById("controlsHeader");
+
                 const fc = document.getElementById("fc");
                 const bw = document.getElementById("bw");
-                const status = document.getElementById("status");
+                const statusEl = document.getElementById("status");
                 const fillInside = document.getElementById("fillInside");
+                const backLink = document.getElementById("backLink");
 
                 fc.value = "#00ffff";
+
+                // status state
+                let statusRender = "WASM worker loading…";
+                let statusCursor = "";
+                let statusZoom = "";
+                let statusError = "";
+
+                function updateStatus() {
+                    const parts = [];
+                    if (statusRender) parts.push(statusRender);
+                    if (statusCursor) parts.push(statusCursor);
+                    if (statusZoom) parts.push(statusZoom);
+                    if (statusError) parts.push(statusError);
+                    statusEl.textContent = parts.join(" | ");
+                }
+
+                function setRenderStatus(msg) {
+                    statusRender = msg;
+                    updateStatus();
+                }
+
+                function setZoomStatus() {
+                    statusZoom = `zoom: ${zoom.toFixed(3)}x`;
+                    updateStatus();
+                }
+
+                function setCursorStatus(cx, cy) {
+                    if (cx == null || cy == null) {
+                        statusCursor = "";
+                        updateStatus();
+                        return;
+                    }
+                    const re = cx.toFixed(6);
+                    const imAbs = Math.abs(cy).toFixed(6);
+                    const sign = cy >= 0 ? "+" : "-";
+                    statusCursor = `cursor: ${re} ${sign} ${imAbs}i`;
+                    updateStatus();
+                }
+
+                function setErrorStatus(msg) {
+                    statusError = msg ? `error: ${msg}` : "";
+                    updateStatus();
+                }
 
                 // initialize from checkbox state so it's respected on first render
                 let fillInterior = fillInside.checked ? 1 : 0;
@@ -147,9 +281,19 @@
                 let panStartCenterX = 0;
                 let panStartCenterY = 0;
 
-                function setStatus(msg) {
-                    status.textContent = msg;
-                }
+                // drag for controls (via header only)
+                let draggingControls = false;
+                let dragOffsetX = 0;
+                let dragOffsetY = 0;
+
+                // pinch-zoom state
+                const activePointers = new Map(); // id -> {x, y}
+                let isPinching = false;
+                let pinchStartDist = 0;
+                let pinchStartZoom = 1;
+                let pinchStartWorldX = 0;
+                let pinchStartWorldY = 0;
+                let pinchLastZoomFactor = 1;
 
                 function hexToRgb(hex) {
                     let h = hex.replace("#", "");
@@ -209,17 +353,18 @@
                 }
 
                 function resize() {
-                    const cssW = window.innerWidth;
-                    const cssH = window.innerHeight;
+                    const rect = canvas.getBoundingClientRect();
+                    const cssW = rect.width;
+                    const cssH = rect.height;
 
-                    canvas.style.width = cssW + "px";
-                    canvas.style.height = cssH + "px";
+                    const newW = Math.max(1, Math.floor(cssW));
+                    const newH = Math.max(1, Math.floor(cssH));
 
-                    canvas.width = cssW;
-                    canvas.height = cssH;
+                    canvas.width = newW;
+                    canvas.height = newH;
 
-                    fullW = canvas.width;
-                    fullH = canvas.height;
+                    fullW = newW;
+                    fullH = newH;
 
                     baseCanvas.width = fullW;
                     baseCanvas.height = fullH;
@@ -262,6 +407,7 @@
                     if (!workerReady) return;
                     currentStage = 0;
                     stagePending = true;
+                    setErrorStatus("");
                 }
 
                 function colorizeGray(gray, w, h) {
@@ -337,17 +483,106 @@
                     ctx.setTransform(1, 0, 0, 1, 0, 0);
                 }
 
+                function updatePaletteBorderColor() {
+                    controls.style.borderColor = fc.value;
+                    backLink.style.color = fc.value;
+                }
+
+                // canvas pointer / touch interactions
                 canvas.addEventListener("pointerdown", (e) => {
-                    isPanning = true;
-                    canvas.setPointerCapture(e.pointerId);
-                    panStartX = e.clientX;
-                    panStartY = e.clientY;
-                    panStartCenterX = centerX;
-                    panStartCenterY = centerY;
+                    activePointers.set(e.pointerId, {
+                        x: e.clientX,
+                        y: e.clientY,
+                    });
+
+                    // start pinch when we have 2 pointers
+                    if (activePointers.size === 2) {
+                        isPinching = true;
+                        isPanning = false;
+
+                        const pts = Array.from(activePointers.values());
+                        const dx = pts[0].x - pts[1].x;
+                        const dy = pts[0].y - pts[1].y;
+                        pinchStartDist = Math.hypot(dx, dy) || 1;
+                        pinchStartZoom = zoom;
+                        pinchLastZoomFactor = 1;
+
+                        const rect = canvas.getBoundingClientRect();
+                        const sx = (pts[0].x + pts[1].x) / 2 - rect.left;
+                        const sy = (pts[0].y + pts[1].y) / 2 - rect.top;
+
+                        const world = screenToWorld(sx, sy);
+                        pinchStartWorldX = world.cx;
+                        pinchStartWorldY = world.cy;
+
+                        markInteraction();
+                        return;
+                    }
+
+                    // single-finger pan
+                    if (!isPinching && activePointers.size === 1) {
+                        isPanning = true;
+                        canvas.setPointerCapture(e.pointerId);
+                        panStartX = e.clientX;
+                        panStartY = e.clientY;
+                        panStartCenterX = centerX;
+                        panStartCenterY = centerY;
+                    }
                 });
 
                 canvas.addEventListener("pointermove", (e) => {
-                    if (!isPanning) return;
+                    if (!activePointers.has(e.pointerId)) return;
+                    activePointers.set(e.pointerId, {
+                        x: e.clientX,
+                        y: e.clientY,
+                    });
+
+                    const rect = canvas.getBoundingClientRect();
+                    const sx = e.clientX - rect.left;
+                    const sy = e.clientY - rect.top;
+
+                    const world = screenToWorld(sx, sy);
+                    setCursorStatus(world.cx, world.cy);
+
+                    if (isPinching && activePointers.size === 2) {
+                        const pts = Array.from(activePointers.values());
+                        const dx = pts[0].x - pts[1].x;
+                        const dy = pts[0].y - pts[1].y;
+                        const dist = Math.hypot(dx, dy) || 1;
+                        const zoomFactor = dist / pinchStartDist;
+
+                        zoom = pinchStartZoom * zoomFactor;
+
+                        const sxNow = (pts[0].x + pts[1].x) / 2 - rect.left;
+                        const syNow = (pts[0].y + pts[1].y) / 2 - rect.top;
+
+                        const after = screenToWorld(sxNow, syNow);
+                        centerX += pinchStartWorldX - after.cx;
+                        centerY += pinchStartWorldY - after.cy;
+
+                        // adjust interactive viewScale/offset like wheel zoom
+                        const relative =
+                            zoomFactor / (pinchLastZoomFactor || 1);
+                        const oldScale = viewScale || 1;
+                        const newScale = oldScale * relative;
+
+                        viewOffsetX =
+                            sxNow -
+                            (sxNow - viewOffsetX) * (newScale / oldScale);
+                        viewOffsetY =
+                            syNow -
+                            (syNow - viewOffsetY) * (newScale / oldScale);
+                        viewScale = newScale;
+
+                        pinchLastZoomFactor = zoomFactor;
+
+                        setZoomStatus();
+                        markInteraction();
+                        return;
+                    }
+
+                    if (!isPanning || isPinching) return;
+
                     const dx = e.clientX - panStartX;
                     const dy = e.clientY - panStartY;
 
@@ -355,11 +590,9 @@
 
                     if (worldWidth && worldHeight) {
                         centerX =
-                            panStartCenterX -
-                            (dx / (window.innerWidth || 1)) * worldWidth;
+                            panStartCenterX - (dx / (fullW || 1)) * worldWidth;
                         centerY =
-                            panStartCenterY -
-                            (dy / (window.innerHeight || 1)) * worldHeight;
+                            panStartCenterY - (dy / (fullH || 1)) * worldHeight;
                     }
 
                     viewOffsetX = dx;
@@ -368,7 +601,20 @@
                     markInteraction();
                 });
 
+                canvas.addEventListener("pointerleave", () => {
+                    setCursorStatus(null, null);
+                });
+
                 function endPan(e) {
+                    if (activePointers.has(e.pointerId)) {
+                        activePointers.delete(e.pointerId);
+                    }
+
+                    if (isPinching && activePointers.size < 2) {
+                        isPinching = false;
+                        pinchLastZoomFactor = 1;
+                    }
+
                     if (!isPanning) return;
                     isPanning = false;
                     try {
@@ -380,6 +626,7 @@
                 canvas.addEventListener("pointerup", endPan);
                 canvas.addEventListener("pointercancel", endPan);
 
+                // mouse wheel zoom
                 canvas.addEventListener(
                     "wheel",
                     (e) => {
@@ -399,8 +646,8 @@
                         centerX += before.cx - after.cx;
                         centerY += before.cy - after.cy;
 
-                        const oldScale = viewScale;
-                        const newScale = viewScale * zoomFactor;
+                        const oldScale = viewScale || 1;
+                        const newScale = oldScale * zoomFactor;
 
                         viewOffsetX =
                             sx - (sx - viewOffsetX) * (newScale / oldScale);
@@ -408,12 +655,17 @@
                             sy - (sy - viewOffsetY) * (newScale / oldScale);
                         viewScale = newScale;
 
+                        setZoomStatus();
                         markInteraction();
                     },
                     { passive: false },
                 );
 
-                fc.addEventListener("input", applyPaletteToLastGray);
+                // palette events
+                fc.addEventListener("input", () => {
+                    updatePaletteBorderColor();
+                    applyPaletteToLastGray();
+                });
                 bw.addEventListener("input", applyPaletteToLastGray);
 
                 fillInside.addEventListener("change", () => {
@@ -494,8 +746,8 @@
                         fillInterior: fillSnap,
                     });
 
-                    setStatus(
-                        `stage=${stageIndex} scale=${scaleSnap} fb=${fbW}x${fbH}`,
+                    setRenderStatus(
+                        `render: stage ${stageIndex + 1}/${STAGES.length} scale=${scaleSnap}`,
                     );
                 }
 
@@ -608,13 +860,17 @@
                     baseCtx.drawImage(canvas, 0, 0);
                     baseValid = true;
 
-                    setStatus(`done stage=${currentStage} scale=${jobScale}`);
-
                     currentStage++;
                     stagePending = currentStage < STAGES.length;
                     if (!stagePending) {
                         currentStage = -1;
-                        setStatus("idle");
+                        setRenderStatus("idle");
+                    } else {
+                        setRenderStatus(
+                            `render: stage ${currentStage + 1}/${
+                                STAGES.length
+                            } scale=${STAGES[currentStage].scale}`,
+                        );
                     }
                 }
 
@@ -624,6 +880,7 @@
                     if (
                         interactionActive &&
                         !isPanning &&
+                        !isPinching &&
                         now - lastInteractionTime > INTERACTION_SETTLE_MS &&
                         currentStage === -1 &&
                         workerReady
@@ -631,7 +888,6 @@
                         interactionActive = false;
                         viewScale = 1;
                         viewOffsetX = 0;
-                        viewOffsetY = 0;
                         requestFullRender();
                     }
 
@@ -656,8 +912,8 @@
                         const msg = e.data;
                         if (msg.type === "ready") {
                             workerReady = true;
-                            setStatus("worker ready");
-                            resize();
+                            setRenderStatus("worker ready");
+                            setErrorStatus("");
                             requestFullRender();
                             return;
                         }
@@ -673,10 +929,56 @@
                             handleWorkerFrame(msg);
                             return;
                         }
+                        if (msg.type === "error") {
+                            setErrorStatus(msg.message || "worker error");
+                            return;
+                        }
+                    };
+                    worker.onerror = (err) => {
+                        setErrorStatus(err.message || "worker error");
+                    };
+                    worker.onmessageerror = () => {
+                        setErrorStatus("worker message error");
                     };
                 }
 
+                // drag controls via header
+                controlsHeader.addEventListener("pointerdown", (e) => {
+                    if (e.button !== 0) return;
+                    draggingControls = true;
+                    controlsHeader.setPointerCapture(e.pointerId);
+                    const rect = controls.getBoundingClientRect();
+                    dragOffsetX = e.clientX - rect.left;
+                    dragOffsetY = e.clientY - rect.top;
+                });
+
+                function endControlsDrag(e) {
+                    if (!draggingControls) return;
+                    draggingControls = false;
+                    try {
+                        controlsHeader.releasePointerCapture(e.pointerId);
+                    } catch (_) {}
+                }
+
+                window.addEventListener("pointermove", (e) => {
+                    if (!draggingControls) return;
+                    const x = e.clientX - dragOffsetX;
+                    const y = e.clientY - dragOffsetY;
+                    controls.style.left = x + "px";
+                    controls.style.top = y + "px";
+                });
+
+                controlsHeader.addEventListener("pointerup", endControlsDrag);
+                controlsHeader.addEventListener(
+                    "pointercancel",
+                    endControlsDrag,
+                );
+
                 function init() {
+                    resize();
+                    updatePaletteBorderColor();
+                    setZoomStatus();
+                    updateStatus();
                     initWorker();
                     loop();
                 }
