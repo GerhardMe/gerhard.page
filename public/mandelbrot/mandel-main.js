@@ -95,9 +95,6 @@
     let currentJobId = null;
     let jobInFlight = false;
 
-    // NEW: snapshot of the view that the current job is rendering
-    let currentJobView = null;
-
     const STAGES = [
         { scale: 4 },
         { scale: 1 },
@@ -105,6 +102,9 @@
     ];
     let currentStage = -1;
     let stagePending = false;
+
+    // NEW: per-job flag – first worker message triggers commit+reset
+    let jobFirstChunk = false;
 
     // interaction throttling
     let interactionActive = false;
@@ -128,8 +128,6 @@
     let isPinching = false;
     let pinchStartDist = 0;
     let pinchStartScale = 1;
-    let pinchStartOffsetX = 0;
-    let pinchStartOffsetY = 0;
     let pinchAnchorScreenX = 0;
     let pinchAnchorScreenY = 0;
     let pinchAnchorWorldX = 0;
@@ -165,8 +163,8 @@
             worker.postMessage({ type: "cancel", jobId: currentJobId });
         }
         currentJobId = null;
-        currentJobView = null;
         jobInFlight = false;
+        jobFirstChunk = false;
     }
 
     function hexToRgb(hex) {
@@ -385,6 +383,25 @@
         backLink.style.color = fc.value;
     }
 
+    // ---------- commit visual transform once per job, right before first draw ----------
+
+    function commitVisualToBaseOnceForJob() {
+        if (!jobFirstChunk) return;
+        jobFirstChunk = false;
+
+        const view = getCurrentView(); // uses current viewScale + offsets
+
+        centerX = view.cx;
+        centerY = view.cy;
+        zoom = view.zoom;
+
+        viewScale = 1;
+        viewOffsetX = 0;
+        viewOffsetY = 0;
+
+        setZoomStatus();
+    }
+
     // ------------------ canvas pointer / touch ------------------
 
     canvas.addEventListener("pointerdown", (e) => {
@@ -404,10 +421,9 @@
             const pts = Array.from(activePointers.values());
             const dx = pts[0].x - pts[1].x;
             const dy = pts[0].y - pts[1].y;
-            pinchStartDist = Math.hypot(dx, dy) || 1;
+            const dist = Math.hypot(dx, dy) || 1;
+            pinchStartDist = dist;
             pinchStartScale = viewScale;
-            pinchStartOffsetX = viewOffsetX;
-            pinchStartOffsetY = viewOffsetY;
 
             const sxMid = (pts[0].x + pts[1].x) / 2 - rect.left;
             const syMid = (pts[0].y + pts[1].y) / 2 - rect.top;
@@ -567,12 +583,11 @@
         if (!fbW || !fbH) return;
 
         const jobId = nextJobId++;
-        const view = getCurrentView(); // snapshot
-
         currentJobId = jobId;
-        currentJobView = { cx: view.cx, cy: view.cy, zoom: view.zoom };
         jobInFlight = true;
+        jobFirstChunk = true; // next worker message will commit/reset view
 
+        const view = getCurrentView();
         const fillSnap = fillInterior | 0;
 
         worker.postMessage({
@@ -599,6 +614,9 @@
 
         if (currentStage !== STAGES.length - 1) return;
 
+        // first message for this job: commit visual view and reset transform
+        commitVisualToBaseOnceForJob();
+
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
 
@@ -617,6 +635,9 @@
         const { jobId, fbW, fbH, gray, yStart, yEnd } = msg;
 
         if (currentJobId === null || jobId !== currentJobId) return;
+
+        // first message for this job: commit visual view and reset transform
+        commitVisualToBaseOnceForJob();
 
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
@@ -661,37 +682,27 @@
         redrawFromBase();
     }
 
-    // commit view using the snapshot from when the job started
+    // final frame
     function handleWorkerFrame(msg) {
         const { jobId, fbW, fbH, gray } = msg;
 
-        if (currentJobId === null || jobId !== currentJobId || !currentJobView) {
+        if (currentJobId === null || jobId !== currentJobId) {
             jobInFlight = false;
             return;
         }
 
-        jobInFlight = false;
+        // first message for this job might be the frame itself
+        commitVisualToBaseOnceForJob();
 
-        const view = currentJobView;
+        jobInFlight = false;
 
         lastGray = new Uint8Array(gray);
         lastFbW = fbW;
         lastFbH = fbH;
 
         redrawFullColored(lastGray, fbW, fbH);
-
-        // fold the job's view into base center/zoom
-        centerX = view.cx;
-        centerY = view.cy;
-        zoom = view.zoom;
-        viewScale = 1;
-        viewOffsetX = 0;
-        viewOffsetY = 0;
-        setZoomStatus();
-
         redrawFromBase();
 
-        currentJobView = null;
         currentJobId = null;
 
         currentStage++;
