@@ -297,18 +297,6 @@
         setErrorStatus("");
     }
 
-    // ------------------ palette curve ------------------
-
-    function getColorExponent() {
-        // bw 100 -> linear, bw 0 -> strong falloff
-        const raw = parseInt(bw.value, 10) || 0; // 0..100
-        const t = Math.min(1, Math.max(0, raw / 100)); // 0..1
-
-        const minExp = 0.25;  // realy slack
-        const maxExp = 3.0;  // very exponential
-        return minExp + (1 - t) * (maxExp - minExp);
-    }
-
     // ------------------ drawing helpers ------------------
 
     function colorizeGray(gray) {
@@ -316,7 +304,33 @@
         const out = new Uint8ClampedArray(N * 4);
 
         const color = hexToRgb(fc.value);
-        const exp = getColorExponent();
+        const raw = Math.max(0, Math.min(100, parseInt(bw.value, 10) || 0));
+
+        // mode:
+        //   0–49 : your original low-blur curve (smooth)
+        //   50   : pure “colorized grayscale” (linear)
+        //   51–100 : band/burn mode near the set
+        const isLowBlur = raw < 50;
+        const isHighBlur = raw > 50;
+
+        // ----- low blur params: reuse your original exponent logic but only for 0–50 -----
+        let lowExp = null;
+        if (isLowBlur) {
+            const clamped = raw;          // 0..49
+            const t = clamped / 100;      // keep same curve as before
+            const minExp = 0.25;          // really slack
+            const maxExp = 3.0;           // very exponential
+            lowExp = minExp + (1 - t) * (maxExp - minExp);
+        }
+
+        // ----- high blur params: band burn near the set -----
+        let bandWidth = null;
+        if (isHighBlur) {
+            const u = (raw - 50) / 50; // 0..1 for 50→100
+            // bandWidth close to 1 at 51 (thin bright band),
+            // shrinking toward 0.2 at 100 (wider “burn”)
+            bandWidth = 1 - 0.8 * u;  // 1 → 0.2
+        }
 
         let o = 0;
         for (let i = 0; i < N; i++) {
@@ -327,10 +341,27 @@
             if (gNorm <= 0) {
                 r = g = b = 0;
             } else {
-                let wVal = Math.pow(gNorm, exp);
+                let wVal;
 
-                if (wVal < 0) wVal = 0;
-                if (wVal > 1) wVal = 1;
+                const isFilledInterior = fillInterior && v === 255;
+
+                if (isFilledInterior) {
+                    // always fully saturated for inside-set white pixels
+                    wVal = 1;
+                } else if (isLowBlur) {
+                    // your original “blur” behavior (exponential curve)
+                    wVal = Math.pow(gNorm, lowExp);
+                    if (wVal < 0) wVal = 0;
+                    if (wVal > 1) wVal = 1;
+                } else if (isHighBlur) {
+                    // “burn” mode: pixels close to the set (bright gray)
+                    // saturate aggressively.
+                    // gNorm >= bandWidth -> full color
+                    wVal = gNorm >= bandWidth ? 1 : gNorm / bandWidth;
+                } else {
+                    // raw === 50: pure linear “replace grayscale with color”
+                    wVal = gNorm;
+                }
 
                 r = color.r * wVal;
                 g = color.g * wVal;
@@ -342,8 +373,10 @@
             out[o++] = b;
             out[o++] = 255;
         }
+
         return out;
     }
+
 
     function redrawFromBase() {
         if (!baseValid) return;
