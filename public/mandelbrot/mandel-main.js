@@ -13,61 +13,64 @@
 
     fc.value = "#00ffff";
 
-    // status state
-    let statusRender = "WASM worker loading…";
-    let statusCursor = "";
-    let statusZoom = "";
-    let statusError = "";
+    // ------------------ status ------------------
+
+    const status = {
+        render: "WASM worker loading…",
+        cursor: "",
+        zoom: "",
+        error: "",
+    };
 
     function updateStatus() {
         const parts = [];
-        if (statusRender) parts.push(statusRender);
-        if (statusZoom) parts.push(statusZoom);
-        if (statusError) parts.push(statusError);
-        if (statusCursor) parts.push(statusCursor);
+        if (status.render) parts.push(status.render);
+        if (status.zoom) parts.push(status.zoom);
+        if (status.error) parts.push(status.error);
+        if (status.cursor) parts.push(status.cursor);
         statusEl.textContent = parts.join(" | ");
     }
 
     function setRenderStatus(msg) {
-        statusRender = msg;
+        status.render = msg;
         updateStatus();
     }
 
     function setZoomStatus() {
         const effectiveZoom = zoom * (viewScale || 1);
-        statusZoom = `zoom: ${effectiveZoom.toFixed(3)}x`;
+        status.zoom = `zoom: ${effectiveZoom.toFixed(3)}x`;
         updateStatus();
     }
 
     function setCursorStatus(cx, cy) {
         if (cx == null || cy == null) {
-            statusCursor = "";
+            status.cursor = "";
             updateStatus();
             return;
         }
         const re = cx.toFixed(6);
         const imAbs = Math.abs(cy).toFixed(6);
         const sign = cy >= 0 ? "+" : "-";
-        statusCursor = `cursor: ${re} ${sign} ${imAbs}i`;
+        status.cursor = `cursor: ${re} ${sign} ${imAbs}i`;
         updateStatus();
     }
 
     function setErrorStatus(msg) {
-        statusError = msg ? `error: ${msg}` : "";
+        status.error = msg ? `error: ${msg}` : "";
         updateStatus();
     }
 
-    // "base" world view parameters (for baseCanvas / last render)
+    // ------------------ world / base view ------------------
+
     let centerX = -0.75;
     let centerY = 0.0;
     let zoom = 1.0;
 
-    // fill option
     let fillInterior = fillInside.checked ? 1 : 0;
 
-    // framebuffer / base image
     let fullW = 0;
     let fullH = 0;
+
     const baseCanvas = document.createElement("canvas");
     const baseCtx = baseCanvas.getContext("2d");
     let baseValid = false;
@@ -84,12 +87,16 @@
     let viewOffsetX = 0;
     let viewOffsetY = 0;
 
-    // worker
+    // ------------------ worker state ------------------
+
     let worker = null;
     let workerReady = false;
     let nextJobId = 1;
     let currentJobId = null;
     let jobInFlight = false;
+
+    // NEW: snapshot of the view that the current job is rendering
+    let currentJobView = null;
 
     const STAGES = [
         { scale: 4 },
@@ -131,6 +138,36 @@
     // cursor tracking – always live
     let cursorScreenX = null;
     let cursorScreenY = null;
+
+    // ------------------ helpers ------------------
+
+    function nowMs() {
+        return performance.now();
+    }
+
+    function touchInteraction() {
+        interactionActive = true;
+        lastInteractionTime = nowMs();
+    }
+
+    function markInteraction() {
+        interactionActive = true;
+        lastInteractionTime = nowMs();
+
+        // stop current staged render; we will start a new one after settle
+        stagePending = false;
+        currentStage = -1;
+        cancelCurrentJob();
+    }
+
+    function cancelCurrentJob() {
+        if (workerReady && currentJobId != null) {
+            worker.postMessage({ type: "cancel", jobId: currentJobId });
+        }
+        currentJobId = null;
+        currentJobView = null;
+        jobInFlight = false;
+    }
 
     function hexToRgb(hex) {
         let h = hex.replace("#", "");
@@ -206,17 +243,10 @@
     function getCurrentView() {
         const effectiveZoom = zoom * (viewScale || 1);
         const baseParams = worldParamsFor(centerX, centerY, zoom);
-        if (
-            !fullW ||
-            !fullH ||
-            !baseParams.worldWidth ||
-            !baseParams.worldHeight
-        ) {
-            return {
-                cx: centerX,
-                cy: centerY,
-                zoom: effectiveZoom,
-            };
+        const { worldWidth, worldHeight, worldX0, worldY0 } = baseParams;
+
+        if (!fullW || !fullH || !worldWidth || !worldHeight) {
+            return { cx: centerX, cy: centerY, zoom: effectiveZoom };
         }
 
         const s = viewScale || 1;
@@ -226,19 +256,31 @@
         const u = baseXCenter / fullW;
         const v = baseYCenter / fullH;
 
-        const cx = baseParams.worldX0 + u * baseParams.worldWidth;
-        const cy = baseParams.worldY0 + v * baseParams.worldHeight;
+        const cx = worldX0 + u * worldWidth;
+        const cy = worldY0 + v * worldHeight;
 
         return { cx, cy, zoom: effectiveZoom };
     }
 
+    function lockWorldPointToScreen(worldX, worldY, sx, sy) {
+        const base = worldParamsFor(centerX, centerY, zoom);
+        const s = viewScale || 1;
+
+        const uNorm =
+            (worldX - base.worldX0) / (base.worldWidth || 1e-9);
+        const vNorm =
+            (worldY - base.worldY0) / (base.worldHeight || 1e-9);
+        const baseX = uNorm * fullW;
+        const baseY = vNorm * fullH;
+
+        viewOffsetX = sx - s * baseX;
+        viewOffsetY = sy - s * baseY;
+    }
+
     function resize() {
         const rect = canvas.getBoundingClientRect();
-        const cssW = rect.width;
-        const cssH = rect.height;
-
-        const newW = Math.max(1, Math.floor(cssW));
-        const newH = Math.max(1, Math.floor(cssH));
+        const newW = Math.max(1, Math.floor(rect.width));
+        const newH = Math.max(1, Math.floor(rect.height));
 
         canvas.width = newW;
         canvas.height = newH;
@@ -259,26 +301,8 @@
 
     window.addEventListener("resize", () => {
         resize();
-        markInteraction();
+        touchInteraction();
     });
-
-    function markInteraction() {
-        interactionActive = true;
-        lastInteractionTime = performance.now();
-
-        // stop current staged render; we will start a new one after settle
-        stagePending = false;
-        currentStage = -1;
-
-        if (workerReady && currentJobId != null) {
-            worker.postMessage({
-                type: "cancel",
-                jobId: currentJobId,
-            });
-        }
-        currentJobId = null;
-        jobInFlight = false;
-    }
 
     function requestFullRender() {
         if (!workerReady) return;
@@ -287,8 +311,8 @@
         setErrorStatus("");
     }
 
-    // UPDATED: special-case interior (full white) when fill is enabled
-    function colorizeGray(gray, w, h) {
+    // special-case interior (full white) when fill is enabled
+    function colorizeGray(gray) {
         const N = gray.length;
         const out = new Uint8ClampedArray(N * 4);
 
@@ -305,15 +329,12 @@
                 r = g = b = 0;
             } else {
                 let wVal;
-
                 const isFilledInterior = fillInterior && v === 255;
 
                 if (isFilledInterior) {
-                    // interior pixels get full palette color, no dimming
                     wVal = 1;
                 } else {
-                    if (gNorm >= bandWidth) wVal = 1;
-                    else wVal = gNorm / bandWidth;
+                    wVal = gNorm >= bandWidth ? 1 : gNorm / bandWidth;
                 }
 
                 r = color.r * wVal;
@@ -338,31 +359,24 @@
         ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    function recolorFromLastGray() {
-        if (!lastGray || lastFbW <= 0 || lastFbH <= 0) return;
+    function redrawFullColored(gray, fbW, fbH) {
+        const colored = colorizeGray(gray);
 
-        const colored = colorizeGray(lastGray, lastFbW, lastFbH);
+        bufCanvas.width = fbW;
+        bufCanvas.height = fbH;
 
-        bufCanvas.width = lastFbW;
-        bufCanvas.height = lastFbH;
-        const img = new ImageData(colored, lastFbW, lastFbH);
+        const img = new ImageData(colored, fbW, fbH);
         bufCtx.putImageData(img, 0, 0);
 
         baseCtx.setTransform(1, 0, 0, 1, 0, 0);
         baseCtx.clearRect(0, 0, fullW, fullH);
-        baseCtx.drawImage(
-            bufCanvas,
-            0,
-            0,
-            lastFbW,
-            lastFbH,
-            0,
-            0,
-            fullW,
-            fullH,
-        );
+        baseCtx.drawImage(bufCanvas, 0, 0, fbW, fbH, 0, 0, fullW, fullH);
         baseValid = true;
+    }
 
+    function recolorFromLastGray() {
+        if (!lastGray || lastFbW <= 0 || lastFbH <= 0) return;
+        redrawFullColored(lastGray, lastFbW, lastFbH);
         redrawFromBase();
     }
 
@@ -371,12 +385,10 @@
         backLink.style.color = fc.value;
     }
 
-    // pointer / touch for canvas
+    // ------------------ canvas pointer / touch ------------------
+
     canvas.addEventListener("pointerdown", (e) => {
-        activePointers.set(e.pointerId, {
-            x: e.clientX,
-            y: e.clientY,
-        });
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
         const rect = canvas.getBoundingClientRect();
         const sx = e.clientX - rect.left;
@@ -397,9 +409,8 @@
             pinchStartOffsetX = viewOffsetX;
             pinchStartOffsetY = viewOffsetY;
 
-            const rect2 = canvas.getBoundingClientRect();
-            const sxMid = (pts[0].x + pts[1].x) / 2 - rect2.left;
-            const syMid = (pts[0].y + pts[1].y) / 2 - rect2.top;
+            const sxMid = (pts[0].x + pts[1].x) / 2 - rect.left;
+            const syMid = (pts[0].y + pts[1].y) / 2 - rect.top;
             pinchAnchorScreenX = sxMid;
             pinchAnchorScreenY = syMid;
 
@@ -423,20 +434,14 @@
     });
 
     canvas.addEventListener("pointermove", (e) => {
-        // always keep cursor coords live
         const rect = canvas.getBoundingClientRect();
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
         cursorScreenX = sx;
         cursorScreenY = sy;
 
-        if (!activePointers.has(e.pointerId)) {
-            return;
-        }
-        activePointers.set(e.pointerId, {
-            x: e.clientX,
-            y: e.clientY,
-        });
+        if (!activePointers.has(e.pointerId)) return;
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
         if (isPinching && activePointers.size === 2) {
             const pts = Array.from(activePointers.values());
@@ -445,35 +450,23 @@
             const dist = Math.hypot(dx, dy) || 1;
             const zoomFactor = dist / pinchStartDist;
 
-            const newScale = pinchStartScale * zoomFactor;
-            viewScale = newScale;
+            viewScale = pinchStartScale * zoomFactor;
 
-            // keep anchor world point fixed under anchor screen pos
-            const baseParams = worldParamsFor(centerX, centerY, zoom);
-            const s = viewScale || 1;
-
-            const uNorm =
-                (pinchAnchorWorldX - baseParams.worldX0) /
-                (baseParams.worldWidth || 1e-9);
-            const vNorm =
-                (pinchAnchorWorldY - baseParams.worldY0) /
-                (baseParams.worldHeight || 1e-9);
-            const baseX = uNorm * fullW;
-            const baseY = vNorm * fullH;
-
-            viewOffsetX = pinchAnchorScreenX - s * baseX;
-            viewOffsetY = pinchAnchorScreenY - s * baseY;
+            // keep anchor world point fixed
+            lockWorldPointToScreen(
+                pinchAnchorWorldX,
+                pinchAnchorWorldY,
+                pinchAnchorScreenX,
+                pinchAnchorScreenY,
+            );
 
             setZoomStatus();
             redrawFromBase();
-            interactionActive = true;
-            lastInteractionTime = performance.now();
+            touchInteraction();
             return;
         }
 
-        if (!isPanning || isPinching) {
-            return;
-        }
+        if (!isPanning || isPinching) return;
 
         const dx = e.clientX - panStartX;
         const dy = e.clientY - panStartY;
@@ -482,8 +475,7 @@
         viewOffsetY = panStartOffsetY + dy;
 
         redrawFromBase();
-        interactionActive = true;
-        lastInteractionTime = performance.now();
+        touchInteraction();
     });
 
     canvas.addEventListener("pointerleave", () => {
@@ -501,13 +493,16 @@
             isPinching = false;
         }
 
-        if (!isPanning) return;
+        if (!isPanning) {
+            touchInteraction();
+            return;
+        }
+
         isPanning = false;
         try {
             canvas.releasePointerCapture(e.pointerId);
         } catch (_) { }
-        interactionActive = true;
-        lastInteractionTime = performance.now();
+        touchInteraction();
     }
 
     canvas.addEventListener("pointerup", endPan);
@@ -526,32 +521,13 @@
             cursorScreenX = sx;
             cursorScreenY = sy;
 
-            // use OLD transform to find the world point under the cursor
-            const oldScale = viewScale || 1;
             const worldBefore = screenToWorld(sx, sy);
 
             const delta = -e.deltaY;
             const zoomFactor = Math.exp(delta * 0.001);
-            const newScale = oldScale * zoomFactor;
+            viewScale = (viewScale || 1) * zoomFactor;
 
-            // apply new scale
-            viewScale = newScale;
-
-            // keep that world point under the same screen coords
-            const baseParams = worldParamsFor(centerX, centerY, zoom);
-            const s = viewScale || 1;
-
-            const uNorm =
-                (worldBefore.cx - baseParams.worldX0) /
-                (baseParams.worldWidth || 1e-9);
-            const vNorm =
-                (worldBefore.cy - baseParams.worldY0) /
-                (baseParams.worldHeight || 1e-9);
-            const baseX = uNorm * fullW;
-            const baseY = vNorm * fullH;
-
-            viewOffsetX = sx - s * baseX;
-            viewOffsetY = sy - s * baseY;
+            lockWorldPointToScreen(worldBefore.cx, worldBefore.cy, sx, sy);
 
             setZoomStatus();
             redrawFromBase();
@@ -560,31 +536,26 @@
         { passive: false },
     );
 
-    // palette controls
+    // ------------------ palette controls ------------------
+
     fc.addEventListener("input", () => {
         updatePaletteBorderColor();
         recolorFromLastGray();
     });
+
     bw.addEventListener("input", () => {
         recolorFromLastGray();
     });
 
     fillInside.addEventListener("change", () => {
         fillInterior = fillInside.checked ? 1 : 0;
-
-        if (workerReady && currentJobId != null) {
-            worker.postMessage({
-                type: "cancel",
-                jobId: currentJobId,
-            });
-        }
-        currentJobId = null;
-        jobInFlight = false;
+        cancelCurrentJob();
         currentStage = -1;
         stagePending = false;
-
         requestFullRender();
     });
+
+    // ------------------ worker communication ------------------
 
     function startWorkerJob(stageIndex) {
         if (!workerReady) return;
@@ -596,10 +567,12 @@
         if (!fbW || !fbH) return;
 
         const jobId = nextJobId++;
+        const view = getCurrentView(); // snapshot
+
         currentJobId = jobId;
+        currentJobView = { cx: view.cx, cy: view.cy, zoom: view.zoom };
         jobInFlight = true;
 
-        const view = getCurrentView();
         const fillSnap = fillInterior | 0;
 
         worker.postMessage({
@@ -619,12 +592,11 @@
         );
     }
 
-    // UPDATED: only draw scan lines for the last (finest) stage
+    // only draw scan lines for the last (finest) stage
     function handleWorkerScan(msg) {
         const { jobId, fbW, fbH, yStart, yEnd } = msg;
         if (currentJobId === null || jobId !== currentJobId) return;
 
-        // only show scan bands on the final stage
         if (currentStage !== STAGES.length - 1) return;
 
         const numRows = yEnd - yStart;
@@ -644,9 +616,7 @@
     function handleWorkerPartial(msg) {
         const { jobId, fbW, fbH, gray, yStart, yEnd } = msg;
 
-        if (currentJobId === null || jobId !== currentJobId) {
-            return;
-        }
+        if (currentJobId === null || jobId !== currentJobId) return;
 
         const numRows = yEnd - yStart;
         if (numRows <= 0) return;
@@ -664,7 +634,7 @@
             lastGray.set(gray.subarray(srcBase, srcBase + fbW), dstBase);
         }
 
-        const coloredBand = colorizeGray(gray, fbW, numRows);
+        const coloredBand = colorizeGray(gray);
 
         bufCanvas.width = fbW;
         bufCanvas.height = numRows;
@@ -691,46 +661,26 @@
         redrawFromBase();
     }
 
+    // commit view using the snapshot from when the job started
     function handleWorkerFrame(msg) {
         const { jobId, fbW, fbH, gray } = msg;
 
-        if (currentJobId === null || jobId !== currentJobId) {
+        if (currentJobId === null || jobId !== currentJobId || !currentJobView) {
             jobInFlight = false;
             return;
         }
 
         jobInFlight = false;
 
+        const view = currentJobView;
+
         lastGray = new Uint8Array(gray);
         lastFbW = fbW;
         lastFbH = fbH;
 
-        const colored = colorizeGray(lastGray, fbW, fbH);
+        redrawFullColored(lastGray, fbW, fbH);
 
-        bufCanvas.width = fbW;
-        bufCanvas.height = fbH;
-        const img = new ImageData(colored, fbW, fbH);
-        bufCtx.putImageData(img, 0, 0);
-
-        baseCtx.setTransform(1, 0, 0, 1, 0, 0);
-        baseCtx.clearRect(0, 0, fullW, fullH);
-        baseCtx.drawImage(
-            bufCanvas,
-            0,
-            0,
-            fbW,
-            fbH,
-            0,
-            0,
-            fullW,
-            fullH,
-        );
-        baseValid = true;
-
-        redrawFromBase();
-
-        // fold current visual view into base center/zoom
-        const view = getCurrentView();
+        // fold the job's view into base center/zoom
         centerX = view.cx;
         centerY = view.cy;
         zoom = view.zoom;
@@ -739,74 +689,47 @@
         viewOffsetY = 0;
         setZoomStatus();
 
+        redrawFromBase();
+
+        currentJobView = null;
+        currentJobId = null;
+
         currentStage++;
         stagePending = currentStage < STAGES.length;
         if (!stagePending) {
             currentStage = -1;
             setRenderStatus("idle");
         } else {
+            const nextScale = STAGES[currentStage].scale;
             setRenderStatus(
-                `render: stage ${currentStage + 1
-                }/${STAGES.length} scale=${STAGES[currentStage].scale}`,
+                `render: stage ${currentStage + 1}/${STAGES.length} scale=${nextScale}`,
             );
         }
-    }
-
-    function loop() {
-        const now = performance.now();
-
-        // after interaction settles, start staged render for current visual view
-        if (
-            interactionActive &&
-            !isPanning &&
-            !isPinching &&
-            now - lastInteractionTime > INTERACTION_SETTLE_MS &&
-            currentStage === -1 &&
-            workerReady
-        ) {
-            interactionActive = false;
-            requestFullRender();
-        }
-
-        if (stagePending && !jobInFlight) {
-            startWorkerJob(currentStage);
-        }
-
-        // cursor status always live
-        if (cursorScreenX != null && cursorScreenY != null) {
-            const world = screenToWorld(cursorScreenX, cursorScreenY);
-            setCursorStatus(world.cx, world.cy);
-        }
-
-        requestAnimationFrame(loop);
     }
 
     function initWorker() {
         worker = new Worker("/mandelbrot/mandel-worker.js");
         worker.onmessage = (e) => {
             const msg = e.data;
-            if (msg.type === "ready") {
-                workerReady = true;
-                setRenderStatus("worker ready");
-                setErrorStatus("");
-                requestFullRender();
-                return;
-            }
-            if (msg.type === "scan") {
-                handleWorkerScan(msg);
-                return;
-            }
-            if (msg.type === "partial") {
-                handleWorkerPartial(msg);
-                return;
-            }
-            if (msg.type === "frame") {
-                handleWorkerFrame(msg);
-                return;
-            }
-            if (msg.type === "error") {
-                setErrorStatus(msg.message || "worker error");
-                return;
+            switch (msg.type) {
+                case "ready":
+                    workerReady = true;
+                    setRenderStatus("worker ready");
+                    setErrorStatus("");
+                    requestFullRender();
+                    break;
+                case "scan":
+                    handleWorkerScan(msg);
+                    break;
+                case "partial":
+                    handleWorkerPartial(msg);
+                    break;
+                case "frame":
+                    handleWorkerFrame(msg);
+                    break;
+                case "error":
+                    setErrorStatus(msg.message || "worker error");
+                    break;
             }
         };
         worker.onerror = (err) => {
@@ -817,7 +740,8 @@
         };
     }
 
-    // drag controls via header
+    // ------------------ controls drag ------------------
+
     controlsHeader.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
         draggingControls = true;
@@ -845,6 +769,39 @@
 
     controlsHeader.addEventListener("pointerup", endControlsDrag);
     controlsHeader.addEventListener("pointercancel", endControlsDrag);
+
+    // ------------------ main loop ------------------
+
+    function loop() {
+        const now = nowMs();
+
+        // after interaction settles, start staged render for current visual view
+        if (
+            interactionActive &&
+            !isPanning &&
+            !isPinching &&
+            now - lastInteractionTime > INTERACTION_SETTLE_MS &&
+            currentStage === -1 &&
+            workerReady
+        ) {
+            interactionActive = false;
+            requestFullRender();
+        }
+
+        if (stagePending && !jobInFlight) {
+            startWorkerJob(currentStage);
+        }
+
+        // cursor status always live
+        if (cursorScreenX != null && cursorScreenY != null) {
+            const world = screenToWorld(cursorScreenX, cursorScreenY);
+            setCursorStatus(world.cx, world.cy);
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    // ------------------ init ------------------
 
     function init() {
         resize();
