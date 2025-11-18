@@ -46,12 +46,11 @@
                 left: 16px;
                 padding: 8px 10px;
                 background: rgba(0, 0, 0, 0.75);
-                border-radius: 4px;
-                border: 1px solid transparent; /* updated from JS to match palette color */
+                border-radius: 2px;
+                border: 1px solid; /* updated from JS to match palette color */
                 font-size: 12px;
                 z-index: 10;
                 user-select: none;
-                box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
             }
 
             #controlsHeader {
@@ -59,7 +58,11 @@
                 text-transform: uppercase;
                 letter-spacing: 0.03em;
                 margin-bottom: 6px;
-                cursor: move; /* drag handle */
+                width: 20em;
+                cursor: move;
+                margin: -1em -1em -1em -1em;
+                padding: 1em 1em 1em 1em;
+                height: 2.5em;
             }
 
             #controls .controls-row {
@@ -77,13 +80,13 @@
             }
 
             #controls input[type="color"] {
-                width: 26px;
-                height: 26px;
+                width: 1.3em;
+                height: 1.3em;
                 padding: 0;
-                border-radius: 2px;
-                border: 1px solid #555;
+                border-radius: 5px;
+                border: 0px;
                 background: #111;
-                box-sizing: border-box;
+                margin-right: 0.5em;
             }
 
             #controls input[type="checkbox"] {
@@ -91,9 +94,8 @@
             }
 
             #controls input[type="range"] {
-                width: 160px;
+                width: 80%;
                 margin: 2px 0 0 0;
-                border-radius: 2px;
             }
 
             /* Bottom status bar */
@@ -115,11 +117,14 @@
             }
 
             #backLink {
-                text-decoration: underline;
                 color: #00ffff; /* updated from JS to match palette color */
                 cursor: pointer;
                 white-space: nowrap;
                 flex: 0 0 auto;
+                text-decoration: none;
+            }
+            #backLink:hover {
+                text-decoration: underline;
             }
 
             #status {
@@ -162,7 +167,7 @@
             </div>
 
             <div id="statusBar">
-                <a id="backLink" href="../">back</a>
+                <a id="backLink" href="../">&lt;-back</a>
                 <div id="status">WASM worker loading…</div>
             </div>
         </div>
@@ -312,8 +317,8 @@
                     const raw = parseInt(bw.value, 10) || 0;
                     const sNorm = Math.min(1, Math.max(0, raw / 100));
                     const sInv = 1 - sNorm;
-                    const minW = 0.1;
-                    const maxW = 0.95;
+                    const minW = 0.2;
+                    const maxW = 5;
                     return minW + sInv * (maxW - minW);
                 }
 
