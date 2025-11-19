@@ -3,19 +3,19 @@ import Layout from "../../layouts/default.astro";
 import IndexList from "../../components/IndexList/Groups.astro";
 import List from "../../components/IndexList/Lists/Movies.astro";
 import Title from "../../components/Title/Title.astro";
-const modules = import.meta.glob("./*.md", { eager: true });
+const modules = import.meta.glob("./list/*.md", { eager: true });
 const media = Object.values(modules);
 ---
 
 <Layout>
   <Title
-    title="Movies I like"
-    about="This is a collection of some movies i like."
+    title="Movies & shows I like"
+    about="A collection of some movies, documentarys and shows I like."
     icon="f008"
   />
   <IndexList
     media={media}
-    groupBy={["director", "year", "genre", "rating"]}
+    groupBy={["director", "year", "genre", "rating", "type"]}
     favorites={true}
     List={List}
   />

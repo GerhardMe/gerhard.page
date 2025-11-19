@@ -6,12 +6,12 @@ interface Props {
     media: any[];
     groupBy?: string[];
     favorites?: boolean;
-    List?: any; // keep it simple if you don't care about TS here
+    List?: any;
 }
 
 const {
     media,
-    groupBy = ["time"], // default to time
+    groupBy = ["time"],
     favorites = false,
     List = DefaultList,
 } = Astro.props;
@@ -29,7 +29,10 @@ function cmp(a: any, b: any) {
 // Special handling for "time"
 const timeFirst = groupBy[0] === "time";
 const otherKeys = groupBy.filter((k) => k !== "time");
-const sortedAll = [...media].sort(cmp); // flat, date-sorted list
+
+// Flat, date-sorted list
+const sortedAllDesc = [...media].sort(cmp);
+const sortedAllAsc = [...sortedAllDesc].slice().reverse();
 
 function buildBuckets(key: string) {
     const buckets = new Map<string, any[]>();
@@ -42,20 +45,20 @@ function buildBuckets(key: string) {
         buckets.get(k)!.push(post);
     }
 
-    // sort posts inside each bucket
+    // sort posts inside each bucket (desc by time)
     for (const [, arr] of buckets) arr.sort(cmp);
 
     // numeric groups high→low, else alpha
-    const groups = Array.from(buckets.keys()).sort((a, b) => {
+    const groupsDesc = Array.from(buckets.keys()).sort((a, b) => {
         const na = Number(a);
         const nb = Number(b);
         const aIsNum = !Number.isNaN(na);
         const bIsNum = !Number.isNaN(nb);
-        if (aIsNum && bIsNum) return nb - na; // highest number first
+        if (aIsNum && bIsNum) return nb - na;
         return a.toLowerCase().localeCompare(b.toLowerCase());
     });
 
-    return { groups, buckets };
+    return { groupsDesc, buckets };
 }
 
 // Precompute grouped sets for non-time keys only
@@ -73,25 +76,52 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 
 <GroupButtons keys={groupBy} />
 
-<!-- Flat time list (no title) -->
-<section class={`groupset ${timeFirst ? "" : "hidden"}`} data-key="time">
-    <List posts={sortedAll} />
+<!-- TIME: desc -->
+<section
+    class={`groupset ${timeFirst ? "" : "hidden"}`}
+    data-key="time"
+    data-order="desc"
+>
+    <List posts={sortedAllDesc} />
+</section>
+
+<!-- TIME: asc -->
+<section class="groupset hidden" data-key="time" data-order="asc">
+    <List posts={sortedAllAsc} />
 </section>
 
 <!-- Grouped sections for the other keys -->
 {
-    prebuilt.map(({ key, groups, buckets }, i) => (
-        <section
-            class={`groupset ${!timeFirst && i === 0 ? "" : "hidden"}`}
-            data-key={key}
-        >
-            {groups.map((g) => {
-                const list = buckets.get(g) ?? [];
-                if (list.length === 0) return null;
-                return <List posts={list} title={g} />;
-            })}
-        </section>
-    ))
+    prebuilt.flatMap(({ key, groupsDesc, buckets }, i) => {
+        const isFirstNonTime = !timeFirst && i === 0;
+
+        const descSection = (
+            <section
+                class={`groupset ${isFirstNonTime ? "" : "hidden"}`}
+                data-key={key}
+                data-order="desc"
+            >
+                {groupsDesc.map((g) => {
+                    const list = buckets.get(g) ?? [];
+                    if (list.length === 0) return null;
+                    return <List posts={list} title={g} />;
+                })}
+            </section>
+        );
+
+        const ascSection = (
+            <section class="groupset hidden" data-key={key} data-order="asc">
+                {[...groupsDesc].reverse().map((g) => {
+                    const listDesc = buckets.get(g) ?? [];
+                    if (listDesc.length === 0) return null;
+                    const listAsc = [...listDesc].reverse();
+                    return <List posts={listAsc} title={g} />;
+                })}
+            </section>
+        );
+
+        return [descSection, ascSection];
+    })
 }
 
 <style>
@@ -101,13 +131,26 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 </style>
 
 <script is:inline>
-    document.addEventListener("groupby-change", (e) => {
-        const key = e.detail?.key;
-        if (!key) return;
-        document
-            .querySelectorAll(".groupset")
-            .forEach((s) =>
-                s.classList.toggle("hidden", s.dataset.key !== key),
-            );
-    });
+    (function () {
+        let currentKey = "time";
+        let currentOrder = "desc";
+
+        document.addEventListener("groupby-change", (e) => {
+            const key = e.detail?.key;
+            if (!key) return;
+
+            // same key → flip order, new key → reset to desc
+            const order =
+                key === currentKey && currentOrder === "desc" ? "asc" : "desc";
+
+            currentKey = key;
+            currentOrder = order;
+
+            document.querySelectorAll(".groupset").forEach((s) => {
+                const match =
+                    s.dataset.key === key && s.dataset.order === order;
+                s.classList.toggle("hidden", !match);
+            });
+        });
+    })();
 </script>

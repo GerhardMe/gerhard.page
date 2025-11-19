@@ -18,7 +18,7 @@ function stars(n: any) {
             const f = fm(post);
             return (
                 <li class="flex">
-                    <a class="element" href={post.url}>
+                    <a class="element">
                         <img class="cover" src={f.img} loading="lazy" />
 
                         <div class="about">
@@ -27,7 +27,11 @@ function stars(n: any) {
                                     {f.title} <span> ({f.year})</span>
                                 </p>
                                 <p class="director">{f.director}</p>
-                                <p class="genre">{f.genre}</p>
+                                <p class="genre">
+                                    {f.genre}
+                                    <span class="type">{f.type}</span>
+                                </p>
+                                <p class="warning">{f.warning}</p>
                             </div>
                             <p class="rating">{stars(f.rating)}</p>
                         </div>
@@ -59,11 +63,6 @@ function stars(n: any) {
         }
         .element:last-child {
             border-bottom: none;
-        }
-        .element:hover {
-            .movie {
-                text-decoration: underline;
-            }
         }
 
         .cover {
@@ -103,9 +102,19 @@ function stars(n: any) {
                     color: var(--color-bg-dark);
                     font-size: 0.9em;
                 }
+
+                .type {
+                    font-weight: bold;
+                }
+
+                .warning {
+                    color: var(--color-error);
+                }
             }
 
             .rating {
+                color: var(--color-gold);
+                text-shadow: 0 0 0.1em var(--color-shadow);
             }
         }
     }

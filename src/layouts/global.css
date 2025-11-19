@@ -56,6 +56,9 @@ select {
     --color-text: var(--color-fg);
     --color-text-blockquote: #353535;
     --color-text-link: var(--color-accent);
+
+    --color-error: #df0000;
+    --color-gold: #f5e500;
 }
 
 :root.dark {
@@ -71,6 +74,9 @@ select {
     --color-text: var(--color-fg);
     --color-text-blockquote: #d1d1d1;
     --color-text-link: var(--color-accent);
+
+    --color-error: #bb0000;
+    --color-gold: #f1e100;
 }
 
 @font-face {
