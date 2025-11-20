@@ -58,7 +58,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
     .photo {
         position: absolute;
         display: block;
-        will-change: transform, left, top, opacity;
         transform-origin: 50% 50%;
         user-select: none;
 
@@ -81,197 +80,294 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
 <script is:inline>
     const container = document.getElementById("gallery");
-    const maxSize = Number(container.dataset.max || 360);
-    const delayMs = Number(container.dataset.delay || 180);
-    const rotRange = Number(container.dataset.rot || 30);
+    if (!container) {
+        // nothing to do
+    } else {
+        const maxSize = Number(container.dataset.max || 360);
+        const delayMs = Number(container.dataset.delay || 180);
+        const rotRange = Number(container.dataset.rot || 30);
 
-    const imgs = Array.from(container.querySelectorAll("img"));
-    let placed = []; // [{x,y,w,h}]
-    let lastW = 0;
-    let currentY = 0;
+        const imgs = Array.from(container.querySelectorAll("img"));
+        let placed = []; // [{x,y,w,h}]
+        let lastW = 0;
+        let currentY = 0;
+        let relayoutRunning = false;
+        let currentZoomed = null;
 
-    /** ---------- sizing & metrics ---------- */
-    function getUnitW() {
-        const cw = container.clientWidth || 0;
-        if (cw < 600) return maxSize * 0.4;
-        if (cw < 900) return maxSize * 0.6;
-        if (cw < 1200) return maxSize * 0.8;
-        return maxSize;
-    }
-    function metrics() {
-        const unitW = getUnitW();
-        const bumpStep = unitW / 80; // nudge-down step during fit search
-        return { unitW, bumpStep };
-    }
-    const triesPerImage = 100;
-    const rand = (min, max) => Math.random() * (max - min) + min;
-
-    function overlaps(a, b) {
-        return !(
-            a.x + a.w <= b.x ||
-            b.x + b.w <= a.x ||
-            a.y + a.h <= b.y ||
-            b.y + b.h <= a.y
-        );
-    }
-
-    function updateContainerHeight(bottom) {
-        container.style.height = Math.ceil(bottom) + "px";
-    }
-
-    /** ---------- place ONE image ---------- */
-    function layoutOne(img, yStart) {
-        const usableW = Math.max(0, container.clientWidth || 0);
-        const { unitW, bumpStep } = metrics();
-
-        // scale image to unitW cap (both dims)
-        const nw = img.naturalWidth || 1;
-        const nh = img.naturalHeight || 1;
-        let scale = Math.min(unitW / nw, unitW / nh, 1);
-        scale *= rand(0.9, 1.1);
-        const w = Math.round(nw * scale);
-        const h = Math.round(nh * scale);
-
-        let rot = rand(-rotRange, rotRange);
-        if (rot === 0) {
-            rot = 3;
+        /** ---------- sizing & metrics ---------- */
+        function getUnitW() {
+            const cw = container.clientWidth || 0;
+            if (cw < 600) return maxSize * 0.4;
+            if (cw < 900) return maxSize * 0.6;
+            if (cw < 1200) return maxSize * 0.8;
+            return maxSize;
         }
 
-        // start at top, slide down until a free slot appears
-        let y = yStart;
-        let x = 0;
-        let ok = false;
+        function metrics() {
+            const unitW = getUnitW();
+            const bumpStep = unitW / 80; // nudge-down step during fit search
+            return { unitW, bumpStep };
+        }
 
-        for (let attempt = 0; attempt < triesPerImage; attempt++) {
-            const candX = rand(0, Math.max(0, usableW - w));
-            const cand = { x: candX, y, w, h };
+        const triesPerImage = 100;
+        const rand = (min, max) => Math.random() * (max - min) + min;
 
-            ok = true;
-            for (const p of placed) {
-                if (overlaps(cand, p)) {
-                    ok = false;
+        function overlaps(a, b) {
+            return !(
+                a.x + a.w <= b.x ||
+                b.x + b.w <= a.x ||
+                a.y + a.h <= b.y ||
+                b.y + b.h <= a.y
+            );
+        }
+
+        function updateContainerHeight(bottom) {
+            container.style.height = Math.ceil(bottom) + "px";
+        }
+
+        function resetImg(img) {
+            const ow = img.dataset.origWidth;
+            const oh = img.dataset.origHeight;
+            const ol = img.dataset.origLeft;
+            const ot = img.dataset.origTop;
+            const otf = img.dataset.origTransform || "";
+
+            if (ow) img.style.width = ow;
+            if (oh) img.style.height = oh;
+            if (ol) img.style.left = ol;
+            if (ot) img.style.top = ot;
+            img.style.transform = otf;
+            img.style.zIndex = 0;
+            img.dataset.zoomed = "0";
+        }
+
+        function zoomImg(img) {
+            // ensure layout state exists
+            if (!img.dataset.origWidth || !img.dataset.origHeight) {
+                const rectW = img.offsetWidth || 0;
+                const rectH = img.offsetHeight || 0;
+                img.dataset.origWidth = rectW + "px";
+                img.dataset.origHeight = rectH + "px";
+                img.dataset.origLeft = img.style.left || "0px";
+                img.dataset.origTop = img.style.top || "0px";
+                img.dataset.origTransform = img.style.transform || "";
+            }
+
+            const vw =
+                window.innerWidth || document.documentElement.clientWidth || 0;
+            const vh =
+                window.innerHeight ||
+                document.documentElement.clientHeight ||
+                0;
+
+            const origW =
+                parseFloat(img.dataset.origWidth) || img.offsetWidth || 1;
+            const origH =
+                parseFloat(img.dataset.origHeight) || img.offsetHeight || 1;
+
+            const maxScale = 3;
+            const scale = Math.min(
+                maxScale,
+                (vw * 0.9) / origW,
+                (vh * 0.9) / origH,
+            );
+
+            const targetW = origW * scale;
+            const targetH = origH * scale;
+
+            img.style.width = targetW + "px";
+            img.style.height = targetH + "px";
+            img.style.left = `calc(50% - ${targetW / 2}px)`;
+            // center vertically in viewport, relative to container
+            const scrollY = window.scrollY || window.pageYOffset || 0;
+            const containerTop =
+                container.getBoundingClientRect().top + scrollY;
+            const centerTop = Math.max(
+                0,
+                scrollY + vh / 2 - targetH / 2 - containerTop,
+            );
+            img.style.top = centerTop + "px";
+
+            img.style.transform = "rotate(0deg)";
+            img.style.zIndex = 10;
+            img.dataset.zoomed = "1";
+        }
+
+        function onPhotoClick(e) {
+            const img = e.currentTarget;
+
+            const isZoomed = img.dataset.zoomed === "1";
+
+            if (isZoomed) {
+                resetImg(img);
+                currentZoomed = null;
+                return;
+            }
+
+            if (currentZoomed && currentZoomed !== img) {
+                resetImg(currentZoomed);
+            }
+
+            zoomImg(img);
+            currentZoomed = img;
+        }
+
+        /** ---------- place ONE image ---------- */
+        function layoutOne(img, yStart) {
+            const usableW = Math.max(0, container.clientWidth || 0);
+            const { unitW, bumpStep } = metrics();
+
+            // scale image to unitW cap (both dims)
+            const nw = img.naturalWidth || 1;
+            const nh = img.naturalHeight || 1;
+            let scale = Math.min(unitW / nw, unitW / nh, 1);
+            scale *= rand(0.9, 1.1);
+            const w = Math.round(nw * scale);
+            const h = Math.round(nh * scale);
+
+            let rot = rand(-rotRange, rotRange);
+            if (rot === 0) {
+                rot = 3;
+            }
+
+            // start at top, slide down until a free slot appears
+            let y = yStart;
+            let x = 0;
+            let ok = false;
+
+            for (let attempt = 0; attempt < triesPerImage; attempt++) {
+                const candX = rand(0, Math.max(0, usableW - w));
+                const cand = { x: candX, y, w, h };
+
+                ok = true;
+                for (const p of placed) {
+                    if (overlaps(cand, p)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    x = candX;
                     break;
                 }
+                y += bumpStep;
             }
-            if (ok) {
-                x = candX;
-                break;
+
+            if (!ok) {
+                // still no fit: drop somewhere at last y
+                const maxX = Math.max(0, usableW - w);
+                x = Math.max(0, Math.min(maxX, rand(0, maxX || 0)));
             }
-            y += bumpStep;
+
+            const left = Math.round(x);
+            const top = Math.round(y);
+
+            img.style.width = w + "px";
+            img.style.height = h + "px";
+            img.style.left = left + "px";
+            img.style.top = top + "px";
+
+            // store original layout state for zoom/reset
+            img.dataset.origWidth = w + "px";
+            img.dataset.origHeight = h + "px";
+            img.dataset.origLeft = left + "px";
+            img.dataset.origTop = top + "px";
+            img.dataset.origTransform = `translateY(0px) rotate(${rot}deg)`;
+            img.dataset.zoomed = img.dataset.zoomed || "0";
+
+            placed.push({ x: left, y: top, w, h });
+            updateContainerHeight(y + h);
+
+            // fly-in animation
+            requestAnimationFrame(() => {
+                img.style.opacity = "1";
+                img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+            });
+
+            return y;
         }
 
-        if (!ok) {
-            // still no fit: drop somewhere at last y
-            x = Math.max(0, Math.min(usableW - w, rand(0, usableW - w)));
-        }
+        /** ---------- place ALL images (with optional delay) ---------- */
+        async function placeAll({ withDelay = true, fromResize = false } = {}) {
+            if (fromResize && relayoutRunning) return;
+            relayoutRunning = true;
 
-        img.style.width = w + "px";
-        img.style.height = h + "px";
-        img.style.left = Math.round(x) + "px";
-        img.style.top = Math.round(y) + "px";
-        img.addEventListener("click", scaleImg);
-
-        placed.push({ x, y, w, h });
-        updateContainerHeight(y + h);
-
-        // fly-in animation: from opacity 0 + translateY(40px) to
-        // opacity 1 + rotate(...)
-        requestAnimationFrame(() => {
-            img.style.opacity = "1";
-            img.style.transform = `translateY(0px) rotate(${rot}deg)`;
-        });
-
-        return y;
-    }
-
-    /** ---------- place ALL images (with optional delay) ---------- */
-    async function placeAll({ withDelay = true } = {}) {
-        placed = [];
-        container.style.height = "0px";
-
-        // ensure clean start positions (avoid flash)
-        for (const img of imgs) {
-            img.style.width = "";
-            img.style.height = "";
-            img.style.left = "80vw";
-
-            // reset animation state
-            img.style.opacity = "0";
-            img.style.transform = "translateY(40px)";
-        }
-
-        currentY = 0;
-
-        for (let i = 0; i < imgs.length; i++) {
-            const img = imgs[i];
             try {
-                if (img.decode) {
-                    await img.decode();
-                } else {
-                    await new Promise((res) =>
-                        img.complete
-                            ? res()
-                            : img.addEventListener("load", res, { once: true }),
-                    );
+                // close any zoom before relayout to keep things bounded
+                if (currentZoomed) {
+                    resetImg(currentZoomed);
+                    currentZoomed = null;
                 }
-            } catch {}
 
-            currentY = layoutOne(img, currentY);
+                placed = [];
+                container.style.height = "0px";
 
-            if (withDelay && i < imgs.length - 1) {
-                await new Promise((r) => setTimeout(r, delayMs));
+                // ensure clean start positions (avoid flash)
+                for (const img of imgs) {
+                    img.style.width = "";
+                    img.style.height = "";
+                    img.style.left = "80vw";
+
+                    img.style.opacity = "0";
+                    img.style.transform = "translateY(40px)";
+                    img.dataset.zoomed = "0";
+                }
+
+                currentY = 0;
+
+                for (let i = 0; i < imgs.length; i++) {
+                    const img = imgs[i];
+                    try {
+                        if (img.decode) {
+                            await img.decode();
+                        } else {
+                            await new Promise((res) =>
+                                img.complete
+                                    ? res()
+                                    : img.addEventListener("load", res, {
+                                          once: true,
+                                      }),
+                            );
+                        }
+                    } catch {
+                        // ignore failed decode
+                    }
+
+                    currentY = layoutOne(img, currentY);
+
+                    if (withDelay && i < imgs.length - 1) {
+                        await new Promise((r) => setTimeout(r, delayMs));
+                    }
+                }
+            } finally {
+                relayoutRunning = false;
             }
         }
-    }
 
-    /** ---------- resize handler (reuses the same placer, no delay) ---------- */
-    let rAF = 0;
-    function relayoutOnResize() {
-        cancelAnimationFrame(rAF);
-        rAF = requestAnimationFrame(async () => {
-            const cw = container.clientWidth || 0;
-            if (Math.abs(cw - lastW) < 2) return;
-            lastW = cw;
-            await placeAll({ withDelay: false });
-        });
-    }
-
-    let scaled = false;
-    let origLeft = "";
-    let origRot = "";
-
-    function scaleImg() {
-        if (!scaled) {
-            const h = parseInt(this.style.height, 10) || this.offsetHeight;
-            const w = parseInt(this.style.width, 10) || this.offsetWidth;
-
-            origLeft = this.style.left;
-            origRot = this.style.transform;
-
-            this.style.height = h * 3 + "px";
-            this.style.width = w * 3 + "px";
-            this.style.transform = "rotate(0deg)";
-            this.style.zIndex = 1;
-
-            this.style.left = `calc(50% - ${w * 1.5}px)`;
-
-            scaled = true;
-        } else if (this.style.transform === "rotate(0deg)") {
-            const h = parseInt(this.style.height, 10) || this.offsetHeight;
-            const w = parseInt(this.style.width, 10) || this.offsetWidth;
-
-            this.style.height = h / 3 + "px";
-            this.style.width = w / 3 + "px";
-            this.style.left = origLeft;
-            this.style.transform = origRot;
-
-            scaled = false;
-
-            setTimeout(() => (this.style.zIndex = 0), 2000);
+        /** ---------- resize handler (reuses the same placer, no delay) ---------- */
+        let rAF = 0;
+        function relayoutOnResize() {
+            cancelAnimationFrame(rAF);
+            rAF = requestAnimationFrame(() => {
+                const cw = container.clientWidth || 0;
+                if (Math.abs(cw - lastW) < 2) return;
+                lastW = cw;
+                // no delay, skip if a relayout is already running
+                placeAll({ withDelay: false, fromResize: true });
+            });
         }
-    }
 
-    // initial run with delay (sequential fly-in)
-    placeAll({ withDelay: true });
-    window.addEventListener("resize", relayoutOnResize, { passive: true });
+        // attach listeners once
+        for (const img of imgs) {
+            img.addEventListener("click", onPhotoClick);
+        }
+
+        // initial run with delay (sequential fly-in)
+
+        setTimeout(() => {
+            placeAll({ withDelay: true, fromResize: false });
+        }, 2000); // delay in ms
+
+        window.addEventListener("resize", relayoutOnResize, { passive: true });
+    }
 </script>
