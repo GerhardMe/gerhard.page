@@ -9,9 +9,12 @@ interface Props {
 const {
     images = [],
     maxSize = 400,
-    delayMs = 150,
+    delayMs = 300,
     rotationRange = 30,
 } = Astro.props;
+
+// randomize every render
+const shuffled = [...images].sort(() => Math.random() - 0.5);
 ---
 
 <div class="windowWidth">
@@ -22,7 +25,7 @@ const {
         data-rot={rotationRange}
     >
         {
-            images.map((u) => (
+            shuffled.map((u) => (
                 <img
                     class="photo"
                     src={u.src}

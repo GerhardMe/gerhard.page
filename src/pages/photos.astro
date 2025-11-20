@@ -3,13 +3,10 @@ import Layout from "../layouts/default.astro";
 import Gallery from "../components/Gallery/Gallery.astro";
 import Title from "../components/Title/Title.astro";
 
-const mods = import.meta.glob(
-    "../assets/photos/**/*.{jpg,jpeg,png,webp,avif}",
-    {
-        eager: true,
-        import: "default",
-    },
-);
+const mods = import.meta.glob("../assets/gallery/*.{jpg,jpeg,png,webp,avif}", {
+    eager: true,
+    import: "default",
+});
 
 const urls = Object.values(mods);
 ---
