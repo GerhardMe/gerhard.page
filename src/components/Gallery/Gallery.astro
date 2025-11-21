@@ -30,7 +30,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                     class="photo"
                     src={u.src}
                     alt="some image"
-                    loading="eager"
                     decoding="async"
                 />
             ))
@@ -93,8 +92,12 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         let currentY = 0;
         let relayoutRunning = false;
         let currentZoomed = null;
+        let decodedOnce = false;
 
-        /** ---------- sizing & metrics ---------- */
+        /** ---------- utils ---------- */
+        const triesPerImage = 80;
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
         function getUnitW() {
             const cw = container.clientWidth || 0;
             if (cw < 600) return maxSize * 0.4;
@@ -108,9 +111,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             const bumpStep = unitW / 80; // nudge-down step during fit search
             return { unitW, bumpStep };
         }
-
-        const triesPerImage = 100;
-        const rand = (min, max) => Math.random() * (max - min) + min;
 
         function overlaps(a, b) {
             return !(
@@ -126,33 +126,22 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         }
 
         function resetImg(img) {
-            const ow = img.dataset.origWidth;
-            const oh = img.dataset.origHeight;
-            const ol = img.dataset.origLeft;
-            const ot = img.dataset.origTop;
-            const otf = img.dataset.origTransform || "";
+            const ow = Number(img.dataset.origW || 0);
+            const oh = Number(img.dataset.origH || 0);
+            const ol = Number(img.dataset.origLeft || 0);
+            const ot = Number(img.dataset.origTop || 0);
+            const rot = Number(img.dataset.origRot || 0);
 
-            if (ow) img.style.width = ow;
-            if (oh) img.style.height = oh;
-            if (ol) img.style.left = ol;
-            if (ot) img.style.top = ot;
-            img.style.transform = otf;
-            img.style.zIndex = 0;
+            if (ow) img.style.width = ow + "px";
+            if (oh) img.style.height = oh + "px";
+            img.style.left = ol + "px";
+            img.style.top = ot + "px";
+            img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+            img.style.zIndex = "0";
             img.dataset.zoomed = "0";
         }
 
         function zoomImg(img) {
-            // ensure layout state exists
-            if (!img.dataset.origWidth || !img.dataset.origHeight) {
-                const rectW = img.offsetWidth || 0;
-                const rectH = img.offsetHeight || 0;
-                img.dataset.origWidth = rectW + "px";
-                img.dataset.origHeight = rectH + "px";
-                img.dataset.origLeft = img.style.left || "0px";
-                img.dataset.origTop = img.style.top || "0px";
-                img.dataset.origTransform = img.style.transform || "";
-            }
-
             const vw =
                 window.innerWidth || document.documentElement.clientWidth || 0;
             const vh =
@@ -160,10 +149,8 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 document.documentElement.clientHeight ||
                 0;
 
-            const origW =
-                parseFloat(img.dataset.origWidth) || img.offsetWidth || 1;
-            const origH =
-                parseFloat(img.dataset.origHeight) || img.offsetHeight || 1;
+            const origW = Number(img.dataset.origW || img.offsetWidth || 1);
+            const origH = Number(img.dataset.origH || img.offsetHeight || 1);
 
             const maxScale = 3;
             const scale = Math.min(
@@ -178,6 +165,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             img.style.width = targetW + "px";
             img.style.height = targetH + "px";
             img.style.left = `calc(50% - ${targetW / 2}px)`;
+
             // center vertically in viewport, relative to container
             const scrollY = window.scrollY || window.pageYOffset || 0;
             const containerTop =
@@ -189,7 +177,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             img.style.top = centerTop + "px";
 
             img.style.transform = "rotate(0deg)";
-            img.style.zIndex = 10;
+            img.style.zIndex = "10";
             img.dataset.zoomed = "1";
         }
 
@@ -212,12 +200,31 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             currentZoomed = img;
         }
 
-        /** ---------- place ONE image ---------- */
+        /** ---------- preload all once ---------- */
+        function preloadAll() {
+            if (decodedOnce) return Promise.resolve();
+            return Promise.all(
+                imgs.map((img) => {
+                    if (img.decode) {
+                        return img.decode().catch(() => {
+                            // ignore decode errors
+                        });
+                    }
+                    if (img.complete) return Promise.resolve();
+                    return new Promise((res) =>
+                        img.addEventListener("load", res, { once: true }),
+                    );
+                }),
+            ).then(() => {
+                decodedOnce = true;
+            });
+        }
+
+        /** ---------- place ONE image (no animation) ---------- */
         function layoutOne(img, yStart) {
             const usableW = Math.max(0, container.clientWidth || 0);
             const { unitW, bumpStep } = metrics();
 
-            // scale image to unitW cap (both dims)
             const nw = img.naturalWidth || 1;
             const nh = img.naturalHeight || 1;
             let scale = Math.min(unitW / nw, unitW / nh, 1);
@@ -226,11 +233,8 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             const h = Math.round(nh * scale);
 
             let rot = rand(-rotRange, rotRange);
-            if (rot === 0) {
-                rot = 3;
-            }
+            if (!rot) rot = 3;
 
-            // start at top, slide down until a free slot appears
             let y = yStart;
             let x = 0;
             let ok = false;
@@ -254,7 +258,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             }
 
             if (!ok) {
-                // still no fit: drop somewhere at last y
                 const maxX = Math.max(0, usableW - w);
                 x = Math.max(0, Math.min(maxX, rand(0, maxX || 0)));
             }
@@ -267,33 +270,58 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             img.style.left = left + "px";
             img.style.top = top + "px";
 
-            // store original layout state for zoom/reset
-            img.dataset.origWidth = w + "px";
-            img.dataset.origHeight = h + "px";
-            img.dataset.origLeft = left + "px";
-            img.dataset.origTop = top + "px";
-            img.dataset.origTransform = `translateY(0px) rotate(${rot}deg)`;
+            img.dataset.origW = String(w);
+            img.dataset.origH = String(h);
+            img.dataset.origLeft = String(left);
+            img.dataset.origTop = String(top);
+            img.dataset.origRot = String(rot);
             img.dataset.zoomed = img.dataset.zoomed || "0";
 
             placed.push({ x: left, y: top, w, h });
             updateContainerHeight(y + h);
 
-            // fly-in animation
-            requestAnimationFrame(() => {
-                img.style.opacity = "1";
-                img.style.transform = `translateY(0px) rotate(${rot}deg)`;
-            });
+            // keep invisible and shifted for fly-in; no animation here
+            img.style.opacity = "0";
+            img.style.transform = `translateY(40px) rotate(${rot}deg)`;
 
             return y;
         }
 
-        /** ---------- place ALL images (with optional delay) ---------- */
+        /** ---------- animate all (after layout) ---------- */
+        function delay(ms) {
+            return new Promise((res) => setTimeout(res, ms));
+        }
+
+        async function flyInAll(withDelay) {
+            if (!withDelay) {
+                for (const img of imgs) {
+                    const rot = Number(img.dataset.origRot || 0);
+                    img.style.opacity = "1";
+                    img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+                }
+                return;
+            }
+
+            for (let i = 0; i < imgs.length; i++) {
+                const img = imgs[i];
+                const rot = Number(img.dataset.origRot || 0);
+                img.style.opacity = "1";
+                img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+                if (i < imgs.length - 1) {
+                    await delay(delayMs);
+                }
+            }
+        }
+
+        /** ---------- place ALL images ---------- */
         async function placeAll({ withDelay = true, fromResize = false } = {}) {
             if (fromResize && relayoutRunning) return;
             relayoutRunning = true;
 
             try {
-                // close any zoom before relayout to keep things bounded
+                await preloadAll();
+
+                // close any zoom before relayout
                 if (currentZoomed) {
                     resetImg(currentZoomed);
                     currentZoomed = null;
@@ -302,12 +330,9 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 placed = [];
                 container.style.height = "0px";
 
-                // ensure clean start positions (avoid flash)
                 for (const img of imgs) {
                     img.style.width = "";
                     img.style.height = "";
-                    img.style.left = "80vw";
-
                     img.style.opacity = "0";
                     img.style.transform = "translateY(40px)";
                     img.dataset.zoomed = "0";
@@ -317,34 +342,16 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
                 for (let i = 0; i < imgs.length; i++) {
                     const img = imgs[i];
-                    try {
-                        if (img.decode) {
-                            await img.decode();
-                        } else {
-                            await new Promise((res) =>
-                                img.complete
-                                    ? res()
-                                    : img.addEventListener("load", res, {
-                                          once: true,
-                                      }),
-                            );
-                        }
-                    } catch {
-                        // ignore failed decode
-                    }
-
                     currentY = layoutOne(img, currentY);
-
-                    if (withDelay && i < imgs.length - 1) {
-                        await new Promise((r) => setTimeout(r, delayMs));
-                    }
                 }
+
+                await flyInAll(withDelay);
             } finally {
                 relayoutRunning = false;
             }
         }
 
-        /** ---------- resize handler (reuses the same placer, no delay) ---------- */
+        /** ---------- resize handler (no decode, no delay) ---------- */
         let rAF = 0;
         function relayoutOnResize() {
             cancelAnimationFrame(rAF);
@@ -352,7 +359,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 const cw = container.clientWidth || 0;
                 if (Math.abs(cw - lastW) < 2) return;
                 lastW = cw;
-                // no delay, skip if a relayout is already running
+
                 placeAll({ withDelay: false, fromResize: true });
             });
         }
@@ -362,11 +369,10 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             img.addEventListener("click", onPhotoClick);
         }
 
-        // initial run with delay (sequential fly-in)
-
+        // initial run: preload all, then layout+fly-in
         setTimeout(() => {
             placeAll({ withDelay: true, fromResize: false });
-        }, 2000); // delay in ms
+        }, 200); // shorter initial delay
 
         window.addEventListener("resize", relayoutOnResize, { passive: true });
     }
