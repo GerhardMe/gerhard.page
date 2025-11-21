@@ -95,7 +95,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         let decodedOnce = false;
 
         /** ---------- utils ---------- */
-        const triesPerImage = 80;
+        const triesPerImage = 60; // slightly reduced to lower work per image
         const rand = (min, max) => Math.random() * (max - min) + min;
 
         function getUnitW() {
@@ -200,27 +200,31 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             currentZoomed = img;
         }
 
-        /** ---------- preload all once ---------- */
-        function preloadAll() {
-            if (decodedOnce) return Promise.resolve();
-            return Promise.all(
-                imgs.map((img) => {
-                    if (img.decode) {
-                        return img.decode().catch(() => {
-                            // ignore decode errors
-                        });
-                    }
-                    if (img.complete) return Promise.resolve();
-                    return new Promise((res) =>
-                        img.addEventListener("load", res, { once: true }),
-                    );
-                }),
-            ).then(() => {
-                decodedOnce = true;
-            });
+        /** ---------- decode helpers (sequential) ---------- */
+        function decodeOne(img) {
+            if (img.decode) {
+                return img.decode().catch(() => {
+                    // ignore decode errors
+                });
+            }
+            if (img.complete) return Promise.resolve();
+            return new Promise((res) =>
+                img.addEventListener("load", res, { once: true }),
+            );
         }
 
-        /** ---------- place ONE image (no animation) ---------- */
+        async function preloadAll() {
+            if (decodedOnce) return;
+            // decode sequentially to avoid a big Promise.all spike
+            for (let i = 0; i < imgs.length; i++) {
+                const img = imgs[i];
+                // small yield between decodes for responsiveness
+                await decodeOne(img);
+            }
+            decodedOnce = true;
+        }
+
+        /** ---------- layout of ONE image (no animation) ---------- */
         function layoutOne(img, yStart) {
             const usableW = Math.max(0, container.clientWidth || 0);
             const { unitW, bumpStep } = metrics();
@@ -292,6 +296,10 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             return new Promise((res) => setTimeout(res, ms));
         }
 
+        function nextFrame() {
+            return new Promise((res) => requestAnimationFrame(res));
+        }
+
         async function flyInAll(withDelay) {
             if (!withDelay) {
                 for (const img of imgs) {
@@ -313,7 +321,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             }
         }
 
-        /** ---------- place ALL images ---------- */
+        /** ---------- place ALL images (incremental) ---------- */
         async function placeAll({ withDelay = true, fromResize = false } = {}) {
             if (fromResize && relayoutRunning) return;
             relayoutRunning = true;
@@ -340,9 +348,14 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
                 currentY = 0;
 
+                // place images one-by-one, yielding every few to reduce spikes
+                const batchSize = 3;
                 for (let i = 0; i < imgs.length; i++) {
                     const img = imgs[i];
                     currentY = layoutOne(img, currentY);
+                    if ((i + 1) % batchSize === 0) {
+                        await nextFrame();
+                    }
                 }
 
                 await flyInAll(withDelay);
@@ -351,17 +364,19 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             }
         }
 
-        /** ---------- resize handler (no decode, no delay) ---------- */
-        let rAF = 0;
+        /** ---------- resize handler (debounced, no decode) ---------- */
+        let resizeTimer = 0;
         function relayoutOnResize() {
-            cancelAnimationFrame(rAF);
-            rAF = requestAnimationFrame(() => {
-                const cw = container.clientWidth || 0;
-                if (Math.abs(cw - lastW) < 2) return;
-                lastW = cw;
+            const cw = container.clientWidth || 0;
+            if (Math.abs(cw - lastW) < 2) return;
+            lastW = cw;
 
+            if (resizeTimer) {
+                clearTimeout(resizeTimer);
+            }
+            resizeTimer = window.setTimeout(() => {
                 placeAll({ withDelay: false, fromResize: true });
-            });
+            }, 150);
         }
 
         // attach listeners once
@@ -372,7 +387,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         // initial run: preload all, then layout+fly-in
         setTimeout(() => {
             placeAll({ withDelay: true, fromResize: false });
-        }, 200); // shorter initial delay
+        }, 200);
 
         window.addEventListener("resize", relayoutOnResize, { passive: true });
     }
