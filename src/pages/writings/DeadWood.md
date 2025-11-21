@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Dead wood
 date: 2018-04-19
-catagory: story
+catagory: poem
 ---
 
 Moving through the forest he realized how dead it really was.
