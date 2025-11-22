@@ -17,6 +17,7 @@ function fmtDate(d: string | Date) {
             <li class="element">
                 <a href={post.url}>
                     {post.frontmatter?.title ?? post.slug ?? post.id}
+                    <span class="catagory">- {post.frontmatter?.catagory}</span>
                 </a>
                 <p class="date">{fmtDate(post.frontmatter?.date)}</p>
             </li>
@@ -46,11 +47,15 @@ function fmtDate(d: string | Date) {
             border-bottom: none;
         }
 
+        .element:has(a:hover) {
+            border-bottom: 1px solid var(--color-bg-dark);
+        }
+
         a {
             color: var(--color-text-link);
 
             &:hover {
-                text-decoration: underline;
+                font-weight: bold;
             }
         }
 
@@ -59,6 +64,11 @@ function fmtDate(d: string | Date) {
             display: flex;
             flex-direction: column;
             justify-content: space-around;
+        }
+
+        .catagory {
+            color: var(--color-bg-dark);
+            margin-left: 0.2em;
         }
     }
 </style>
