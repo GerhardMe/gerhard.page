@@ -1,0 +1,10 @@
+---
+title: "Léon: The Professional"
+director: ""
+year: 1994
+genre: drama
+type: movie
+rating: 3
+favorite: false
+img: /images/movies/léon-the-professional.jpg
+---

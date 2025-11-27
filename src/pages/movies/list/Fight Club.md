@@ -2,9 +2,9 @@
 title: Fight Club
 director: David Fincher 
 year: 1999
-genre: thriller
+genre: drama
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/fightClub.jpg
+img: /images/movies/fight-club.jpg
 ---

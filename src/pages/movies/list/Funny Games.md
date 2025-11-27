@@ -6,6 +6,6 @@ genre: horror
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/funnyGames.jpg
+img: /images/movies/funny-games.jpg
 warning: uncomfortable
 ---

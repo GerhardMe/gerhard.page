@@ -11,7 +11,7 @@ interface Props {
 
 const {
     media,
-    groupBy = ["time"],
+    groupBy = ["read"],
     favorites = false,
     List = DefaultList,
 } = Astro.props;
@@ -21,14 +21,14 @@ function fm(post: any) {
 }
 
 function cmp(a: any, b: any) {
-    const da = new Date(fm(a).date ?? 0).getTime();
-    const db = new Date(fm(b).date ?? 0).getTime();
+    const da = new Date(fm(a).read ?? 0).getTime();
+    const db = new Date(fm(b).read ?? 0).getTime();
     return db - da; // newest first
 }
 
 // Special handling for "time"
-const timeFirst = groupBy[0] === "time";
-const otherKeys = groupBy.filter((k) => k !== "time");
+const timeFirst = groupBy[0] === "read";
+const otherKeys = groupBy.filter((k) => k !== "read");
 
 // Flat, date-sorted list
 const sortedAllDesc = [...media].sort(cmp);
@@ -79,14 +79,14 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 <!-- TIME: desc -->
 <section
     class={`groupset ${timeFirst ? "" : "hidden"}`}
-    data-key="time"
+    data-key="read"
     data-order="desc"
 >
     <List posts={sortedAllDesc} />
 </section>
 
 <!-- TIME: asc -->
-<section class="groupset hidden" data-key="time" data-order="asc">
+<section class="groupset hidden" data-key="read" data-order="asc">
     <List posts={sortedAllAsc} />
 </section>
 
@@ -132,7 +132,7 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 
 <script is:inline>
     (function () {
-        let currentKey = "time";
+        let currentKey = "read";
         let currentOrder = "desc";
 
         document.addEventListener("groupby-change", (e) => {

@@ -6,5 +6,5 @@ genre: horror
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/lighthouse.jpg
+img: /images/movies/the-lighthouse.jpg
 ---

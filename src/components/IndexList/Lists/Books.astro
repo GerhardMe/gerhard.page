@@ -34,13 +34,14 @@ function stars(n: any) {
                                 <div class="book">
                                     {f.title ?? post.slug ?? post.id}
                                 </div>
-                                <span class="author">{f.author}</span>
+                                <div class="author">by {f.author}</div>
+                                <div class="year">({f.year})</div>
                             </div>
                         </div>
                     </a>
                     <div class="x">
                         <div class="y">
-                            <div class="date">{fmtDate(f.date)}</div>
+                            <div class="year">read: {fmtDate(f.read)}</div>
                             <div class="rating">{stars(f.rating)}</div>
                         </div>
                     </div>
@@ -101,15 +102,17 @@ function stars(n: any) {
             font-size: 0.9em;
             color: var(--color-bg-dark);
         }
-        .author::before {
-            content: "- ";
+        .year {
+            font-size: 0.9em;
+            color: var(--color-bg-dark);
         }
-
-        .date {
+        .read {
             color: var(--color-bg-dark);
         }
         .rating {
-            color: yellow;
+            color: var(--color-gold);
+            text-shadow: 0 0 0.1em var(--color-shadow);
+            text-align: right;
         }
     }
 </style>

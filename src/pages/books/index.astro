@@ -3,7 +3,7 @@ import Layout from "../../layouts/default.astro";
 import IndexList from "../../components/IndexList/Groups.astro";
 import List from "../../components/IndexList/Lists/Books.astro";
 import Title from "../../components/Title/Title.astro";
-const modules = import.meta.glob("./*.md", { eager: true });
+const modules = import.meta.glob("./list/*.md", { eager: true });
 const media = Object.values(modules);
 ---
 
@@ -23,7 +23,7 @@ const media = Object.values(modules);
   </div>
   <IndexList
     media={media}
-    groupBy={["time", "author", "rating", "year"]}
+    groupBy={["read", "author", "rating", "year"]}
     favorites={true}
     List={List}
   />

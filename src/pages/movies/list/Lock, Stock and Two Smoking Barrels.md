@@ -6,5 +6,5 @@ genre: crime comedy
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/LSaTSB.jpg
+img: /images/movies/lock-stock-and-two-smoking-barrels.jpg
 ---

@@ -6,5 +6,5 @@ genre: family
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/mrFox.jpg
+img: /images/movies/fantastic-mr-fox.jpg
 ---

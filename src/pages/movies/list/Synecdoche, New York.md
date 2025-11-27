@@ -6,6 +6,6 @@ genre: drama
 type: movie
 rating: 5
 favorite: true
-img: /images/movies/synec.jpg
+img: /images/movies/synecdoche-new-york.jpg
 warning: uncomfortable
 ---

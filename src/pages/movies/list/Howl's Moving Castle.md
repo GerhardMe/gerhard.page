@@ -6,5 +6,5 @@ genre: family
 type: movie
 rating: 5
 favorite: true
-img: /images/movies/HMC.jpg
+img: /images/movies/howls-moving-castle.jpg
 ---

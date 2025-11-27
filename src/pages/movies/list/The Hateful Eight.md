@@ -6,5 +6,5 @@ genre: western
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/hatefull8.jpg
+img: /images/movies/the-hateful-eight.jpg
 ---

@@ -6,5 +6,5 @@ genre: drama
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/banshees.jpg
+img: /images/movies/the-banshees-of-inisherin.jpg
 ---

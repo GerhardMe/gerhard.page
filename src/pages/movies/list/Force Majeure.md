@@ -6,6 +6,5 @@ genre: drama
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/forceMajeure.jpg
-warning: uncomfortable
+img: /images/movies/force-majeure.jpg
 ---

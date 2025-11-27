@@ -6,5 +6,5 @@ genre: psychology
 type: documentary
 rating: 5
 favorite: false
-img: /images/movies/painterThef.jpg
+img: /images/movies/the-painter-and-the-thief.jpg
 ---

@@ -6,5 +6,5 @@ genre: sci-fi
 type: short-film
 rating: 5
 favorite: false
-img: /images/movies/worldOfTomorrow.jpg
+img: /images/movies/world-of-tomorrow.jpg
 ---

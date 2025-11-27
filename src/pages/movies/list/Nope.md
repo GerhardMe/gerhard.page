@@ -1,0 +1,10 @@
+---
+title: "Nope"
+director: ""
+year: 2022
+genre: drama
+type: movie
+rating: 2
+favorite: false
+img: /images/movies/nope.jpg
+---

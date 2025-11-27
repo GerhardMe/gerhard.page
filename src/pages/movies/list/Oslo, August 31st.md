@@ -6,5 +6,5 @@ genre: drama
 type: movie
 rating: 5
 favorite: false
-img: /images/movies/Oslo31Aug.jpg
+img: /images/movies/oslo-august-31st.jpg
 ---

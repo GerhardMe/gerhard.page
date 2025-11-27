@@ -6,5 +6,5 @@ genre: psychology
 type: documentary
 rating: 5
 favorite: false
-img: /images/movies/someKindHeaven.jpg
+img: /images/movies/some-kind-of-heaven.jpg
 ---

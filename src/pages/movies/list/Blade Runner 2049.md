@@ -6,5 +6,5 @@ genre: sci-fi
 type: movie
 rating: 5
 favorite: true
-img: images/movies/BladeRunner49.jpg
+img: /images/movies/blade-runner-2049.jpg
 ---

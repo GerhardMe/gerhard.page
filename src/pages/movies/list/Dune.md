@@ -6,5 +6,5 @@ genre: sci-fi
 type: movie
 rating: 5
 favorite: true
-img: images/movies/dune.jpg
+img: /images/movies/dune.jpg
 ---
