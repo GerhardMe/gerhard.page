@@ -3,7 +3,7 @@ import Layout from "../../layouts/default.astro";
 import IndexList from "../../components/IndexList/Groups.astro";
 import List from "../../components/IndexList/Lists/Texts.astro";
 import Title from "../../components/Title/Title.astro";
-const modules = import.meta.glob("./*.md", { eager: true });
+const modules = import.meta.glob("./works/*.md", { eager: true });
 const media = Object.values(modules);
 ---
 
@@ -13,5 +13,5 @@ const media = Object.values(modules);
     about="This is where i keep my writings."
     icon="f040"
   />
-  <IndexList media={media} groupBy={["time", "catagory"]} List={List} />
+  <IndexList media={media} groupBy={["date", "catagory"]} List={List} />
 </Layout>

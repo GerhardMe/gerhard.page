@@ -2,7 +2,7 @@
 import DefaultList from "./Lists/Books.astro";
 import GroupButtons from "./GroupsBtn.astro";
 
-interface Props {
+interface __Props__ {
     media: any[];
     groupBy?: string[];
     favorites?: boolean;
@@ -20,23 +20,38 @@ function fm(post: any) {
     return post.frontmatter ?? post.data ?? {};
 }
 
-function cmp(a: any, b: any) {
-    const da = new Date(fm(a).read ?? 0).getTime();
-    const db = new Date(fm(b).read ?? 0).getTime();
-    return db - da; // newest first
+function isDateValue(val: any) {
+    if (val == null || val === "") return false;
+    // Numbers alone shouldn't count as dates (years, ratings, etc.)
+    if (typeof val === "number") return false;
+    // Must be a string that looks like a date
+    if (typeof val !== "string") return false;
+    // Reject short strings (like "4" or "1957")
+    if (val.length < 6) return false;
+    const d = new Date(val);
+    return !isNaN(d.getTime());
 }
 
-// Special handling for "time"
-const timeFirst = groupBy[0] === "read";
-const otherKeys = groupBy.filter((k) => k !== "read");
+function isDateKey(key: string) {
+    const samples = media.slice(0, 10);
+    const validDates = samples.filter((p) => isDateValue(fm(p)[key]));
+    return validDates.length > samples.length / 2;
+}
 
-// Flat, date-sorted list
-const sortedAllDesc = [...media].sort(cmp);
-const sortedAllAsc = [...sortedAllDesc].slice().reverse();
+const dateKeys = groupBy.filter(isDateKey);
+const bucketKeys = groupBy.filter((k) => !isDateKey(k));
+
+function buildDateSections(key: string) {
+    const sorted = [...media].sort((a, b) => {
+        const da = new Date(fm(a)[key] ?? 0).getTime() || 0;
+        const db = new Date(fm(b)[key] ?? 0).getTime() || 0;
+        return db - da;
+    });
+    return { desc: sorted, asc: [...sorted].reverse() };
+}
 
 function buildBuckets(key: string) {
     const buckets = new Map<string, any[]>();
-
     for (const post of media) {
         const f = fm(post);
         const raw = f[key];
@@ -45,27 +60,39 @@ function buildBuckets(key: string) {
         buckets.get(k)!.push(post);
     }
 
-    // sort posts inside each bucket (desc by time)
-    for (const [, arr] of buckets) arr.sort(cmp);
+    // sort posts inside each bucket by first date key, or keep original order
+    const sortKey = dateKeys[0];
+    if (sortKey) {
+        for (const [, arr] of buckets) {
+            arr.sort((a, b) => {
+                const da = new Date(fm(a)[sortKey] ?? 0).getTime() || 0;
+                const db = new Date(fm(b)[sortKey] ?? 0).getTime() || 0;
+                return db - da;
+            });
+        }
+    }
 
-    // numeric groups high→low, else alpha
     const groupsDesc = Array.from(buckets.keys()).sort((a, b) => {
         const na = Number(a);
         const nb = Number(b);
-        const aIsNum = !Number.isNaN(na);
-        const bIsNum = !Number.isNaN(nb);
-        if (aIsNum && bIsNum) return nb - na;
+        if (!Number.isNaN(na) && !Number.isNaN(nb)) return nb - na;
         return a.toLowerCase().localeCompare(b.toLowerCase());
     });
 
     return { groupsDesc, buckets };
 }
 
-// Precompute grouped sets for non-time keys only
-const prebuilt = otherKeys.map((k) => ({ key: k, ...buildBuckets(k) }));
+const dateSections = Object.fromEntries(
+    dateKeys.map((k) => [k, buildDateSections(k)]),
+);
 
-// Favorites (optional)
+const prebuilt = bucketKeys.map((k) => ({ key: k, ...buildBuckets(k) }));
+
 const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
+
+// Figure out which key/order shows first
+const firstKey = groupBy[0];
+const firstIsDate = dateKeys.includes(firstKey);
 ---
 
 {
@@ -76,28 +103,32 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 
 <GroupButtons keys={groupBy} />
 
-<!-- TIME: desc -->
-<section
-    class={`groupset ${timeFirst ? "" : "hidden"}`}
-    data-key="read"
-    data-order="desc"
->
-    <List posts={sortedAllDesc} />
-</section>
-
-<!-- TIME: asc -->
-<section class="groupset hidden" data-key="read" data-order="asc">
-    <List posts={sortedAllAsc} />
-</section>
-
-<!-- Grouped sections for the other keys -->
+<!-- Date-based keys -->
 {
-    prebuilt.flatMap(({ key, groupsDesc, buckets }, i) => {
-        const isFirstNonTime = !timeFirst && i === 0;
-
-        const descSection = (
+    dateKeys.map((key) => {
+        const isFirst = key === firstKey;
+        return [
             <section
-                class={`groupset ${isFirstNonTime ? "" : "hidden"}`}
+                class={`groupset ${isFirst ? "" : "hidden"}`}
+                data-key={key}
+                data-order="desc"
+            >
+                <List posts={dateSections[key].desc} />
+            </section>,
+            <section class="groupset hidden" data-key={key} data-order="asc">
+                <List posts={dateSections[key].asc} />
+            </section>,
+        ];
+    })
+}
+
+<!-- Bucketed keys -->
+{
+    prebuilt.flatMap(({ key, groupsDesc, buckets }) => {
+        const isFirst = key === firstKey;
+        return [
+            <section
+                class={`groupset ${isFirst ? "" : "hidden"}`}
                 data-key={key}
                 data-order="desc"
             >
@@ -106,21 +137,15 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
                     if (list.length === 0) return null;
                     return <List posts={list} title={g} />;
                 })}
-            </section>
-        );
-
-        const ascSection = (
+            </section>,
             <section class="groupset hidden" data-key={key} data-order="asc">
                 {[...groupsDesc].reverse().map((g) => {
                     const listDesc = buckets.get(g) ?? [];
                     if (listDesc.length === 0) return null;
-                    const listAsc = [...listDesc].reverse();
-                    return <List posts={listAsc} title={g} />;
+                    return <List posts={listDesc} title={g} />;
                 })}
-            </section>
-        );
-
-        return [descSection, ascSection];
+            </section>,
+        ];
     })
 }
 
@@ -132,17 +157,16 @@ const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 
 <script is:inline>
     (function () {
-        let currentKey = "read";
+        let currentKey =
+            document.querySelector(".groupset:not(.hidden)")?.dataset.key ?? "";
         let currentOrder = "desc";
 
         document.addEventListener("groupby-change", (e) => {
             const key = e.detail?.key;
             if (!key) return;
 
-            // same key → flip order, new key → reset to desc
             const order =
                 key === currentKey && currentOrder === "desc" ? "asc" : "desc";
-
             currentKey = key;
             currentOrder = order;
 
