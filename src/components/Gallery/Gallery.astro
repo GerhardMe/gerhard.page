@@ -87,11 +87,10 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         const rotRange = Number(container.dataset.rot || 30);
         const imgs = Array.from(container.querySelectorAll("img"));
         let placed = [];
-        let lastW = 0;
         let currentY = 0;
-        let relayoutRunning = false;
         let currentZoomed = null;
         let initialLoadComplete = false;
+        let initialWidth = 0;
 
         const triesPerImage = 60;
         const rand = (min, max) => Math.random() * (max - min) + min;
@@ -173,6 +172,10 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
         function onPhotoClick(e) {
             const img = e.currentTarget;
+
+            // only allow click if this image has been placed
+            if (!img.dataset.origW) return;
+
             const isZoomed = img.dataset.zoomed === "1";
             if (isZoomed) {
                 resetImg(img);
@@ -281,67 +284,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         }
 
         async function initialLoad() {
-            relayoutRunning = true;
-            placed = [];
-            currentY = 0;
-            animationQueue = [];
-            container.style.height = "0px";
-
-            // reset all images to invisible
-            for (const img of imgs) {
-                img.style.width = "";
-                img.style.height = "";
-                img.style.opacity = "0";
-                img.style.transform = "translateY(40px)";
-                img.dataset.zoomed = "0";
-            }
-
-            // create a "race" - each image resolves independently when ready
-            const pending = imgs.map((img, index) => {
-                return decodeOne(img).then(() => ({ img, index }));
-            });
-
-            // as each image becomes ready, place it immediately
-            let remaining = pending.length;
-
-            while (remaining > 0) {
-                // wait for the next image to be ready (whichever finishes first)
-                const { img } = await Promise.race(
-                    pending.filter((p) => (p instanceof Promise ? true : false))
-                        .length > 0
-                        ? pending
-                        : [Promise.resolve(pending[0])],
-                );
-
-                // remove this one from pending by replacing with a never-resolving promise
-                const idx = pending.findIndex(
-                    (p) => p instanceof Promise === false || p === undefined,
-                );
-                if (idx === -1) {
-                    // find and mark the resolved one
-                    for (let i = 0; i < pending.length; i++) {
-                        const result = await Promise.race([
-                            pending[i],
-                            Promise.resolve("still-pending"),
-                        ]);
-                        if (result !== "still-pending" && result.img === img) {
-                            pending[i] = new Promise(() => {}); // never resolves
-                            break;
-                        }
-                    }
-                }
-
-                placeAndQueueAnimation(img);
-                remaining--;
-            }
-
-            initialLoadComplete = true;
-            relayoutRunning = false;
-        }
-
-        // simpler approach - just track which are done
-        async function initialLoadSimple() {
-            relayoutRunning = true;
             placed = [];
             currentY = 0;
             animationQueue = [];
@@ -353,110 +295,12 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 img.style.opacity = "0";
                 img.style.transform = "translateY(40px)";
                 img.dataset.zoomed = "0";
-            }
-
-            const done = new Set();
-
-            // start all decodes
-            const promises = imgs.map((img) => {
-                return decodeOne(img).then(() => img);
-            });
-
-            // process as they complete
-            for (let i = 0; i < imgs.length; i++) {
-                const readyImg = await Promise.race(
-                    promises
-                        .filter((_, idx) => !done.has(idx))
-                        .map((p, filteredIdx) => {
-                            // map back to original index
-                            let originalIdx = -1;
-                            let count = 0;
-                            for (let j = 0; j < promises.length; j++) {
-                                if (!done.has(j)) {
-                                    if (count === filteredIdx) {
-                                        originalIdx = j;
-                                        break;
-                                    }
-                                    count++;
-                                }
-                            }
-                            return p.then((img) => ({ img, originalIdx }));
-                        }),
-                );
-
-                done.add(readyImg.originalIdx);
-                placeAndQueueAnimation(readyImg.img);
-            }
-
-            initialLoadComplete = true;
-            relayoutRunning = false;
-        }
-
-        // cleanest approach
-        async function initialLoadClean() {
-            relayoutRunning = true;
-            placed = [];
-            currentY = 0;
-            animationQueue = [];
-            container.style.height = "0px";
-
-            for (const img of imgs) {
-                img.style.width = "";
-                img.style.height = "";
-                img.style.opacity = "0";
-                img.style.transform = "translateY(40px)";
-                img.dataset.zoomed = "0";
-            }
-
-            // wrap each decode with its image reference
-            let pending = imgs.map((img) => decodeOne(img).then(() => img));
-
-            while (pending.length > 0) {
-                // race all pending - first one ready wins
-                const readyImg = await Promise.race(pending);
-
-                // remove the winner from pending
-                pending = pending.filter((p) => {
-                    // check if this promise resolved to our image
-                    // we need to re-wrap to check
-                    return true; // can't easily check, so rebuild
-                });
-
-                // actually, rebuild pending excluding the ready one
-                const readyIdx = imgs.indexOf(readyImg);
-                pending = imgs
-                    .filter(
-                        (img, idx) => img !== readyImg && !img.dataset.placed,
-                    )
-                    .map((img) => decodeOne(img).then(() => img));
-
-                readyImg.dataset.placed = "1";
-                placeAndQueueAnimation(readyImg);
-            }
-
-            // cleanup
-            for (const img of imgs) {
-                delete img.dataset.placed;
-            }
-
-            initialLoadComplete = true;
-            relayoutRunning = false;
-        }
-
-        // actually the cleanest - use a callback approach
-        async function initialLoadFinal() {
-            relayoutRunning = true;
-            placed = [];
-            currentY = 0;
-            animationQueue = [];
-            container.style.height = "0px";
-
-            for (const img of imgs) {
-                img.style.width = "";
-                img.style.height = "";
-                img.style.opacity = "0";
-                img.style.transform = "translateY(40px)";
-                img.dataset.zoomed = "0";
+                // clear placement data so click handler knows it's not ready
+                delete img.dataset.origW;
+                delete img.dataset.origH;
+                delete img.dataset.origLeft;
+                delete img.dataset.origTop;
+                delete img.dataset.origRot;
             }
 
             let loadedCount = 0;
@@ -469,7 +313,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                         loadedCount++;
                         if (loadedCount === total) {
                             initialLoadComplete = true;
-                            relayoutRunning = false;
+                            initialWidth = container.clientWidth || 0;
                             resolveAll();
                         }
                     });
@@ -477,10 +321,8 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             });
         }
 
-        async function relayout() {
-            if (relayoutRunning) return;
-            relayoutRunning = true;
-
+        function relayout() {
+            // don't relayout if an image is zoomed
             if (currentZoomed) {
                 resetImg(currentZoomed);
                 currentZoomed = null;
@@ -491,25 +333,34 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             container.style.height = "0px";
 
             for (const img of imgs) {
+                // skip images that haven't been placed yet
+                if (!img.dataset.origW) continue;
+
                 img.style.opacity = "0";
                 img.style.transform = "translateY(40px)";
                 img.dataset.zoomed = "0";
             }
 
             for (const img of imgs) {
+                // skip images that haven't been placed yet
+                if (!img.dataset.origW) continue;
+
                 currentY = layoutOne(img, currentY);
                 flyIn(img);
             }
-
-            relayoutRunning = false;
         }
 
         let resizeTimer = 0;
         function relayoutOnResize() {
             if (!initialLoadComplete) return;
+
             const cw = container.clientWidth || 0;
-            if (Math.abs(cw - lastW) < 2) return;
-            lastW = cw;
+
+            // only relayout on significant width change
+            if (Math.abs(cw - initialWidth) < 10) return;
+
+            initialWidth = cw;
+
             if (resizeTimer) {
                 clearTimeout(resizeTimer);
             }
@@ -520,7 +371,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             img.addEventListener("click", onPhotoClick);
         }
 
-        initialLoadFinal();
+        initialLoad();
         window.addEventListener("resize", relayoutOnResize, { passive: true });
     }
 </script>
