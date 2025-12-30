@@ -5,14 +5,12 @@ interface Props {
     delayMs?: number;
     rotationRange?: number;
 }
-
 const {
     images = [],
     maxSize = 400,
     delayMs = 300,
     rotationRange = 30,
 } = Astro.props;
-
 // randomize every render
 const shuffled = [...images].sort(() => Math.random() - 0.5);
 ---
@@ -46,27 +44,22 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         padding-top: 1000px;
         margin-top: -1000px;
     }
-
     #gallery {
         position: relative;
         margin: auto;
         width: 80%;
         margin-bottom: 20em;
     }
-
     .photo {
         position: absolute;
         display: block;
         transform-origin: 50% 50%;
         user-select: none;
-
         border-radius: 0.2em;
         box-shadow: 0 0 8px var(--color-shadow);
-
         /* start invisible + slightly shifted */
         opacity: 0;
         transform: translateY(40px);
-
         transition:
             opacity 0.6s ease,
             transform 0.6s ease,
@@ -86,17 +79,20 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         const delayMs = Number(container.dataset.delay || 100);
         const rotRange = Number(container.dataset.rot || 30);
         const margin = Number(container.dataset.margin || 20);
-        const imgs = Array.from(container.querySelectorAll("img"));
 
+        const imgs = Array.from(container.querySelectorAll("img"));
         let placed = [];
         let activeIndices = [];
         let scanY = 0;
+        let scanDirection = 1; // 1 = left-to-right, -1 = right-to-left
+        let lastPlacedX = 0; // Track where last image was placed for snake continuity
         let currentZoomed = null;
         let initialLoadComplete = false;
         let initialWidth = 0;
 
         const scanStepX = 20;
         const scanStepY = 10;
+
         const rand = (min, max) => Math.random() * (max - min) + min;
 
         function getUnitW() {
@@ -162,7 +158,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         function onPhotoClick(e) {
             const img = e.currentTarget;
             if (!img.dataset.origW) return;
-
             const isZoomed = img.dataset.zoomed === "1";
             if (isZoomed) {
                 resetImg(img);
@@ -185,7 +180,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         function placeImage(img) {
             const usableW = container.clientWidth || 0;
             const unitW = getUnitW();
-
             const nw = img.naturalWidth || 1;
             const nh = img.naturalHeight || 1;
             let scale = Math.min(unitW / nw, unitW / nh, 1) * rand(0.9, 1.1);
@@ -200,34 +194,47 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 const y = foundY;
 
                 // remove images that are above our scan line (cleared)
-                // account for margin in the clearing check
                 activeIndices = activeIndices.filter((idx) => {
                     const p = placed[idx];
                     return p.y + p.h + margin > y;
                 });
 
-                // Calculate starting X position based on image index
+                // Determine scan range based on direction
+                let xStart, xEnd, xStep;
                 const imgIndex = placed.length;
-                let xStart;
 
-                if (imgIndex === 0) {
-                    xStart = Math.floor((usableW - w) * 0.5); // 50% - center
-                } else if (imgIndex === 1) {
-                    xStart = Math.floor((usableW - w) * 0.3); // 30% from left
-                } else if (imgIndex === 2) {
-                    xStart = Math.floor((usableW - w) * 0.2); // 20% from left
-                } else if (imgIndex === 3) {
-                    xStart = Math.floor((usableW - w) * 0.2); // 20% from left
-                } else if (imgIndex === 4) {
-                    xStart = Math.floor((usableW - w) * 0.1); // 10% from left
+                if (scanDirection === 1) {
+                    // Left to right
+                    if (imgIndex === 0) {
+                        xStart = Math.floor((usableW - w) * 0.5); // 50% - center
+                    } else if (imgIndex === 1) {
+                        xStart = Math.floor((usableW - w) * 0.3); // 30% from left
+                    } else if (imgIndex === 2) {
+                        xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+                    } else if (imgIndex === 3) {
+                        xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+                    } else if (imgIndex === 4) {
+                        xStart = Math.floor((usableW - w) * 0.1); // 10% from left
+                    } else {
+                        xStart = Math.max(margin, lastPlacedX);
+                    }
+                    xEnd = usableW - w - margin;
+                    xStep = scanStepX;
                 } else {
-                    xStart = margin; // Normal margin
+                    // Right to left: start from lastPlacedX or right edge
+                    xStart =
+                        imgIndex === 0
+                            ? usableW - w - margin
+                            : Math.min(usableW - w - margin, lastPlacedX);
+                    xEnd = margin;
+                    xStep = -scanStepX;
                 }
 
+                // Scan in current direction
                 for (
                     let x = xStart;
-                    x <= usableW - w - margin;
-                    x += scanStepX
+                    scanDirection === 1 ? x <= xEnd : x >= xEnd;
+                    x += xStep
                 ) {
                     // candidate with margin for overlap check
                     const cand = {
@@ -237,14 +244,12 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                         h: h + margin * 2,
                     };
                     let blocked = false;
-
                     for (const idx of activeIndices) {
                         if (overlaps(cand, placed[idx])) {
                             blocked = true;
                             break;
                         }
                     }
-
                     if (!blocked) {
                         foundX = x;
                         foundY = y;
@@ -252,7 +257,12 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                     }
                 }
 
+                // Couldn't place on this row, move down and flip direction
                 foundY += scanStepY;
+                scanDirection *= -1;
+                // Reset lastPlacedX based on new direction
+                lastPlacedX =
+                    scanDirection === 1 ? margin : usableW - w - margin;
             }
 
             const left = Math.round(foundX);
@@ -261,8 +271,8 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             const newIdx = placed.length;
             placed.push({ x: left, y: top, w, h });
             activeIndices.push(newIdx);
-
             scanY = top;
+            lastPlacedX = left + (scanDirection === 1 ? w : 0); // Track end position for snake continuity
 
             img.dataset.origW = w;
             img.dataset.origH = h;
@@ -296,10 +306,8 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         function processQueue() {
             if (processing || pendingImages.length === 0) return;
             processing = true;
-
             const img = pendingImages.shift();
             placeImage(img);
-
             setTimeout(() => {
                 processing = false;
                 if (
@@ -317,10 +325,11 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             placed = [];
             activeIndices = [];
             scanY = 0;
+            scanDirection = 1;
+            lastPlacedX = 0;
             pendingImages = [];
             processing = false;
             container.style.height = "0px";
-
             for (const img of imgs) {
                 img.style.width = "";
                 img.style.height = "";
@@ -328,7 +337,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 img.style.transform = "translateY(40px)";
                 delete img.dataset.origW;
             }
-
             for (const img of imgs) {
                 decodeOne(img).then(() => queueImage(img));
             }
@@ -339,17 +347,16 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 resetImg(currentZoomed);
                 currentZoomed = null;
             }
-
             placed = [];
             activeIndices = [];
             scanY = 0;
+            scanDirection = 1;
+            lastPlacedX = 0;
             container.style.height = "0px";
-
             for (const img of imgs) {
                 img.style.opacity = "0";
                 img.style.transform = "translateY(40px)";
             }
-
             for (const img of imgs) {
                 placeImage(img);
             }
