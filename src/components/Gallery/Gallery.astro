@@ -206,9 +206,26 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                     return p.y + p.h + margin > y;
                 });
 
-                // scan left to right
+                // Calculate starting X position based on image index
+                const imgIndex = placed.length;
+                let xStart;
+
+                if (imgIndex === 0) {
+                    xStart = Math.floor((usableW - w) * 0.5); // 50% - center
+                } else if (imgIndex === 1) {
+                    xStart = Math.floor((usableW - w) * 0.3); // 30% from left
+                } else if (imgIndex === 2) {
+                    xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+                } else if (imgIndex === 3) {
+                    xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+                } else if (imgIndex === 4) {
+                    xStart = Math.floor((usableW - w) * 0.1); // 10% from left
+                } else {
+                    xStart = margin; // Normal margin
+                }
+
                 for (
-                    let x = margin;
+                    let x = xStart;
                     x <= usableW - w - margin;
                     x += scanStepX
                 ) {
