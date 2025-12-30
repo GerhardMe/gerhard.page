@@ -83,16 +83,20 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         // nothing to do
     } else {
         const maxSize = Number(container.dataset.max || 360);
-        const delayMs = Number(container.dataset.delay || 180);
+        const delayMs = Number(container.dataset.delay || 100);
         const rotRange = Number(container.dataset.rot || 30);
+        const margin = Number(container.dataset.margin || 20);
         const imgs = Array.from(container.querySelectorAll("img"));
+
         let placed = [];
-        let currentY = 0;
+        let activeIndices = [];
+        let scanY = 0;
         let currentZoomed = null;
         let initialLoadComplete = false;
         let initialWidth = 0;
 
-        const triesPerImage = 60;
+        const scanStepX = 20;
+        const scanStepY = 10;
         const rand = (min, max) => Math.random() * (max - min) + min;
 
         function getUnitW() {
@@ -101,12 +105,6 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
             if (cw < 900) return maxSize * 0.6;
             if (cw < 1200) return maxSize * 0.8;
             return maxSize;
-        }
-
-        function metrics() {
-            const unitW = getUnitW();
-            const bumpStep = unitW / 80;
-            return { unitW, bumpStep };
         }
 
         function overlaps(a, b) {
@@ -123,16 +121,12 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         }
 
         function resetImg(img) {
-            const ow = Number(img.dataset.origW || 0);
-            const oh = Number(img.dataset.origH || 0);
-            const ol = Number(img.dataset.origLeft || 0);
-            const ot = Number(img.dataset.origTop || 0);
             const rot = Number(img.dataset.origRot || 0);
-            if (ow) img.style.width = ow + "px";
-            if (oh) img.style.height = oh + "px";
-            img.style.left = ol + "px";
-            img.style.top = ot + "px";
-            img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+            img.style.width = img.dataset.origW + "px";
+            img.style.height = img.dataset.origH + "px";
+            img.style.left = img.dataset.origLeft + "px";
+            img.style.top = img.dataset.origTop + "px";
+            img.style.transform = `rotate(${rot}deg)`;
             img.style.zIndex = "0";
             img.dataset.zoomed = "0";
         }
@@ -144,20 +138,15 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 window.innerHeight ||
                 document.documentElement.clientHeight ||
                 0;
-            const origW = Number(img.dataset.origW || img.offsetWidth || 1);
-            const origH = Number(img.dataset.origH || img.offsetHeight || 1);
-            const maxScale = 3;
-            const scale = Math.min(
-                maxScale,
-                (vw * 0.9) / origW,
-                (vh * 0.9) / origH,
-            );
+            const origW = Number(img.dataset.origW);
+            const origH = Number(img.dataset.origH);
+            const scale = Math.min(3, (vw * 0.9) / origW, (vh * 0.9) / origH);
             const targetW = origW * scale;
             const targetH = origH * scale;
             img.style.width = targetW + "px";
             img.style.height = targetH + "px";
             img.style.left = `calc(50% - ${targetW / 2}px)`;
-            const scrollY = window.scrollY || window.pageYOffset || 0;
+            const scrollY = window.scrollY || 0;
             const containerTop =
                 container.getBoundingClientRect().top + scrollY;
             const centerTop = Math.max(
@@ -172,121 +161,147 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
         function onPhotoClick(e) {
             const img = e.currentTarget;
-
-            // only allow click if this image has been placed
             if (!img.dataset.origW) return;
 
             const isZoomed = img.dataset.zoomed === "1";
             if (isZoomed) {
                 resetImg(img);
                 currentZoomed = null;
-                return;
+            } else {
+                if (currentZoomed) resetImg(currentZoomed);
+                zoomImg(img);
+                currentZoomed = img;
             }
-            if (currentZoomed && currentZoomed !== img) {
-                resetImg(currentZoomed);
-            }
-            zoomImg(img);
-            currentZoomed = img;
         }
 
         function decodeOne(img) {
-            if (img.decode) {
-                return img.decode().catch(() => {});
-            }
+            if (img.decode) return img.decode().catch(() => {});
             if (img.complete) return Promise.resolve();
             return new Promise((res) =>
                 img.addEventListener("load", res, { once: true }),
             );
         }
 
-        function delay(ms) {
-            return new Promise((res) => setTimeout(res, ms));
-        }
+        function placeImage(img) {
+            const usableW = container.clientWidth || 0;
+            const unitW = getUnitW();
 
-        function layoutOne(img, yStart) {
-            const usableW = Math.max(0, container.clientWidth || 0);
-            const { unitW, bumpStep } = metrics();
             const nw = img.naturalWidth || 1;
             const nh = img.naturalHeight || 1;
-            let scale = Math.min(unitW / nw, unitW / nh, 1);
-            scale *= rand(0.9, 1.1);
+            let scale = Math.min(unitW / nw, unitW / nh, 1) * rand(0.9, 1.1);
             const w = Math.round(nw * scale);
             const h = Math.round(nh * scale);
-            let rot = rand(-rotRange, rotRange);
-            if (!rot) rot = 3;
-            let y = yStart;
-            let x = 0;
-            let ok = false;
-            for (let attempt = 0; attempt < triesPerImage; attempt++) {
-                const candX = rand(0, Math.max(0, usableW - w));
-                const cand = { x: candX, y, w, h };
-                ok = true;
-                for (const p of placed) {
-                    if (overlaps(cand, p)) {
-                        ok = false;
-                        break;
+            const rot = rand(-rotRange, rotRange) || 3;
+
+            let foundX = 0;
+            let foundY = scanY;
+
+            outer: while (true) {
+                const y = foundY;
+
+                // remove images that are above our scan line (cleared)
+                // account for margin in the clearing check
+                activeIndices = activeIndices.filter((idx) => {
+                    const p = placed[idx];
+                    return p.y + p.h + margin > y;
+                });
+
+                // scan left to right
+                for (
+                    let x = margin;
+                    x <= usableW - w - margin;
+                    x += scanStepX
+                ) {
+                    // candidate with margin for overlap check
+                    const cand = {
+                        x: x - margin,
+                        y: y - margin,
+                        w: w + margin * 2,
+                        h: h + margin * 2,
+                    };
+                    let blocked = false;
+
+                    for (const idx of activeIndices) {
+                        if (overlaps(cand, placed[idx])) {
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    if (!blocked) {
+                        foundX = x;
+                        foundY = y;
+                        break outer;
                     }
                 }
-                if (ok) {
-                    x = candX;
-                    break;
-                }
-                y += bumpStep;
+
+                foundY += scanStepY;
             }
-            if (!ok) {
-                const maxX = Math.max(0, usableW - w);
-                x = Math.max(0, Math.min(maxX, rand(0, maxX || 0)));
-            }
-            const left = Math.round(x);
-            const top = Math.round(y);
+
+            const left = Math.round(foundX);
+            const top = Math.round(foundY);
+
+            const newIdx = placed.length;
+            placed.push({ x: left, y: top, w, h });
+            activeIndices.push(newIdx);
+
+            scanY = top;
+
+            img.dataset.origW = w;
+            img.dataset.origH = h;
+            img.dataset.origLeft = left;
+            img.dataset.origTop = top;
+            img.dataset.origRot = rot;
+            img.dataset.zoomed = "0";
+
             img.style.width = w + "px";
             img.style.height = h + "px";
             img.style.left = left + "px";
             img.style.top = top + "px";
-            img.dataset.origW = String(w);
-            img.dataset.origH = String(h);
-            img.dataset.origLeft = String(left);
-            img.dataset.origTop = String(top);
-            img.dataset.origRot = String(rot);
-            img.dataset.zoomed = "0";
-            placed.push({ x: left, y: top, w, h });
-            updateContainerHeight(top + h);
-            return top;
+            img.style.transform = `translateY(40px) rotate(${rot}deg)`;
+
+            updateContainerHeight(top + h + margin);
+
+            requestAnimationFrame(() => {
+                img.style.opacity = "1";
+                img.style.transform = `rotate(${rot}deg)`;
+            });
         }
 
-        function flyIn(img) {
-            const rot = Number(img.dataset.origRot || 0);
-            img.style.opacity = "1";
-            img.style.transform = `translateY(0px) rotate(${rot}deg)`;
+        let pendingImages = [];
+        let processing = false;
+
+        function queueImage(img) {
+            pendingImages.push(img);
+            processQueue();
         }
 
-        // queue for staggered animation
-        let animationQueue = [];
-        let animating = false;
+        function processQueue() {
+            if (processing || pendingImages.length === 0) return;
+            processing = true;
 
-        async function processAnimationQueue() {
-            if (animating) return;
-            animating = true;
+            const img = pendingImages.shift();
+            placeImage(img);
 
-            while (animationQueue.length > 0) {
-                const img = animationQueue.shift();
-                flyIn(img);
-                await delay(delayMs);
-            }
-
-            animating = false;
+            setTimeout(() => {
+                processing = false;
+                if (
+                    pendingImages.length === 0 &&
+                    placed.length === imgs.length
+                ) {
+                    initialLoadComplete = true;
+                    initialWidth = container.clientWidth || 0;
+                }
+                processQueue();
+            }, delayMs);
         }
 
-        function placeAndQueueAnimation(img) {
-            currentY = layoutOne(img, currentY);
-            animationQueue.push(img);
-            processAnimationQueue();
-        }
-
-        async function initialLoad() {
+        function initialLoad() {
             placed = [];
-            currentY = 0;
-            animationQueue = [];
+            activeIndices = [];
+            scanY = 0;
+            pendingImages = [];
+            processing = false;
             container.style.height = "0px";
 
             for (const img of imgs) {
@@ -294,84 +309,53 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
                 img.style.height = "";
                 img.style.opacity = "0";
                 img.style.transform = "translateY(40px)";
-                img.dataset.zoomed = "0";
-                // clear placement data so click handler knows it's not ready
                 delete img.dataset.origW;
-                delete img.dataset.origH;
-                delete img.dataset.origLeft;
-                delete img.dataset.origTop;
-                delete img.dataset.origRot;
             }
 
-            let loadedCount = 0;
-            const total = imgs.length;
-
-            return new Promise((resolveAll) => {
-                for (const img of imgs) {
-                    decodeOne(img).then(() => {
-                        placeAndQueueAnimation(img);
-                        loadedCount++;
-                        if (loadedCount === total) {
-                            initialLoadComplete = true;
-                            initialWidth = container.clientWidth || 0;
-                            resolveAll();
-                        }
-                    });
-                }
-            });
+            for (const img of imgs) {
+                decodeOne(img).then(() => queueImage(img));
+            }
         }
 
         function relayout() {
-            // don't relayout if an image is zoomed
             if (currentZoomed) {
                 resetImg(currentZoomed);
                 currentZoomed = null;
             }
 
             placed = [];
-            currentY = 0;
+            activeIndices = [];
+            scanY = 0;
             container.style.height = "0px";
 
             for (const img of imgs) {
-                // skip images that haven't been placed yet
-                if (!img.dataset.origW) continue;
-
                 img.style.opacity = "0";
                 img.style.transform = "translateY(40px)";
-                img.dataset.zoomed = "0";
             }
 
             for (const img of imgs) {
-                // skip images that haven't been placed yet
-                if (!img.dataset.origW) continue;
-
-                currentY = layoutOne(img, currentY);
-                flyIn(img);
+                placeImage(img);
             }
         }
 
         let resizeTimer = 0;
-        function relayoutOnResize() {
-            if (!initialLoadComplete) return;
-
-            const cw = container.clientWidth || 0;
-
-            // only relayout on significant width change
-            if (Math.abs(cw - initialWidth) < 10) return;
-
-            initialWidth = cw;
-
-            if (resizeTimer) {
+        window.addEventListener(
+            "resize",
+            () => {
+                if (!initialLoadComplete) return;
+                const cw = container.clientWidth || 0;
+                if (Math.abs(cw - initialWidth) < 10) return;
+                initialWidth = cw;
                 clearTimeout(resizeTimer);
-            }
-            resizeTimer = window.setTimeout(relayout, 150);
-        }
+                resizeTimer = setTimeout(relayout, 150);
+            },
+            { passive: true },
+        );
 
         for (const img of imgs) {
             img.addEventListener("click", onPhotoClick);
         }
 
         initialLoad();
-        window.addEventListener("resize", relayoutOnResize, { passive: true });
     }
 </script>
