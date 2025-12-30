@@ -5,7 +5,7 @@ import Navbar from "../components/Navbar/Navbar.astro";
 
 <Layout>
   <Navbar />
-  <main class="feed">
+  <main id="feed">
     <slot />
   </main>
 </Layout>
@@ -13,7 +13,7 @@ import Navbar from "../components/Navbar/Navbar.astro";
 <!-- ######################## CSS ######################## -->
 
 <style>
-  .feed {
+  #feed {
     padding-top: 6em;
     padding-bottom: 2em;
     margin: auto;
@@ -25,19 +25,19 @@ import Navbar from "../components/Navbar/Navbar.astro";
   }
 
   @media (max-width: 1300px) {
-    .feed {
+    #feed {
       margin-left: 280px;
     }
   }
   @media (max-width: 1100px) {
-    .feed {
+    #feed {
       margin-left: 0px;
       margin-right: 90px;
       float: right;
     }
   }
   @media (max-width: 900px) {
-    .feed {
+    #feed {
       padding-top: 3em;
       float: none;
 

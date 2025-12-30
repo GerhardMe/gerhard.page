@@ -19,6 +19,7 @@ const { target } = Astro.props;
 </btn>
 
 <script>
+    const feed = document.getElementById("feed") as any;
     const burger = document.querySelector(".burger") as any;
     const nav = document.querySelector(burger?.dataset.target);
 
@@ -26,12 +27,18 @@ const { target } = Astro.props;
 
     function toggle() {
         if (expanded) {
-            nav.classList.toggle("animate");
-            setTimeout(() => nav.classList.toggle("expanded"), 200);
+            nav.classList.remove("vissible");
+            setTimeout(() => nav.classList.remove("expanded"), 200);
+
+            setTimeout(() => feed.classList.remove("hide"), 100);
+            setTimeout(() => feed.classList.remove("animateHide"), 300);
             expanded = false;
         } else {
-            nav.classList.toggle("expanded");
-            setTimeout(() => nav.classList.toggle("animate"), 0);
+            feed.classList.add("animateHide");
+            feed.classList.add("hide");
+
+            nav.classList.add("expanded");
+            setTimeout(() => nav.classList.add("vissible"), 100);
             expanded = true;
         }
         burger?.classList.toggle("clicked");

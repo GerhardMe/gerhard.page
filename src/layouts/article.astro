@@ -1,6 +1,6 @@
 ---
 import Layout from "./default.astro";
-const parentPath = Astro.url.pathname.replace(/\/[^/]+\/?$/, "/");
+const parentPath = Astro.url.pathname.replace(/\/[^/]+\/[^/]+\/?$/, "/");
 const { frontmatter } = Astro.props;
 ---
 

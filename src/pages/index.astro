@@ -7,7 +7,7 @@ import branch from "../assets/misc/branch.png";
 
 <Layout>
   <Navbar />
-  <main class="feed">
+  <main id="feed">
     <div class="backdrop"></div>
     <div class="titleBox">
       <img class="branch" src={branch.src} alt="Branch img" />
@@ -16,10 +16,10 @@ import branch from "../assets/misc/branch.png";
 
     <p class="greeting">
       <span class="hi">Hi👋,</span> and welcome to my corner of the internet! Here
-      you can find my writings, and read about some of my projects. You may also
-      leave me a note in the guestbook, or take a wander in the garden. If you are
-      looking for some inspiration, you can check out the books I have read and the
-      movies I love. I have also tried to collect some of my absolute favorite literature
+      you can find my writings, and read about some of my projects. You may also leave
+      me a note in the guestbook, or take a wander in the garden. If you are looking
+      for some inspiration, you can check out the books I have read and the movies
+      I love. I have also tried to collect some of my absolute favorite literature
       and art in the archive. Looking for other cool websites? Check out my links!
       Hope you enjoy your stay!
     </p>
@@ -29,7 +29,7 @@ import branch from "../assets/misc/branch.png";
 <!-- ######################## CSS ######################## -->
 
 <style>
-  .feed {
+  #feed {
     position: relative;
     margin: auto;
     width: 900px;
@@ -80,18 +80,18 @@ import branch from "../assets/misc/branch.png";
   }
 
   @media (max-width: 1300px) {
-    .feed {
+    #feed {
       margin-left: 200px;
     }
   }
   @media (max-width: 1100px) {
-    .feed {
+    #feed {
       margin-left: 0px;
       float: right;
     }
   }
   @media (max-width: 900px) {
-    .feed {
+    #feed {
       float: none;
       width: 100%;
       padding-left: 1em;

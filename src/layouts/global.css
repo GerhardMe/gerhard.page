@@ -40,6 +40,14 @@ select {
     }
 }
 
+.animateHide {
+    transition: opacity 0.2s ease;
+}
+
+.hide {
+    opacity: 0;
+}
+
 /* Collor palette */
 
 :root {
