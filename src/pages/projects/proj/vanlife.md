@@ -59,6 +59,8 @@ The electrical systems consisted of some key components:
 - A "shore" charger
 - 230V inverter
 
+![image of solar pannel](/projects/vanlife/solar.jpg)
+
 I had a quite good grip on electricity from before, but the amount of current in this system and the sheer size still made it a real challenge. The heart of the system was the 200AH battery in the back. The system is built a lot like one would build a houseboat system with a so called "house" battery. This battery is responsible for driving everything I would use for living in the van. The regular car battery was not to be used for anything else than starting the car. This way I insured that the car battery wouldn't go flat. Also a car battery is built to be able to supply a starting voltage regardless of temperature and load. A starter battery is not made to be fully depleted and it should be kept at almost full capacity most of the time. 
 
 I went with Lithium-ion for the house battery. Lithium-ion has much lower internal resistance and a much higher resting voltage than LEAD-acid or AMG batteries. This would obviously come back to bite me almost immediately. I wanted the dynamo in the car to charge both the starter battery and the house battery when I was driving, but have the circuits separate when discharging. My first solution to this was to use a relay that measured voltage and connected the circuits when the voltage was over 14. The idea was that this would only occur whence the dynamo was running. 
