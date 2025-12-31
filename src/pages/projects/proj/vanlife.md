@@ -3,9 +3,8 @@ layout: /src/layouts/article.astro
 title: Vanlife
 date: 2021-06-20
 category: practical
+image: /projects/vanlife/car.jpg
 ---
-
-![image of car](/projects/vanlife/car.jpg)
 
 In the summer of 2021 I bought a van. I then converted this van to a camper, and then proceeded to live fulltime in it for over half a year.
 
