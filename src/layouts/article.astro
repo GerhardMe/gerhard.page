@@ -138,8 +138,13 @@ const { frontmatter } = Astro.props;
       padding-left: 1.5em;
       list-style: numbers;
     }
+
     :global(ol li) {
       margin-bottom: 0.5em;
+    }
+
+    :global(ol li::marker) {
+      font-weight: bold;
     }
 
     :global(pre) {
