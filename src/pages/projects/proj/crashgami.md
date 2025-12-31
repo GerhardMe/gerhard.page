@@ -1,6 +1,6 @@
 ---
 layout: /src/layouts/article.astro
 title: Crashgami
-date: 2025-12-30
-category: draft
+date: 2023-10-06
+category: practical-draft
 ---

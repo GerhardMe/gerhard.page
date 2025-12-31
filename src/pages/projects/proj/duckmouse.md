@@ -1,8 +1,8 @@
 ---
 layout: /src/layouts/article.astro
 title: Duckmouse
-date: 2023-08-20
-category: InProgress
+date: 2022-08-23
+category: code-InProgress
 image: /projects/duckmouse/closeup.webp
 ---
 

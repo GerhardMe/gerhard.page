@@ -1,6 +1,6 @@
 ---
 layout: /src/layouts/article.astro
-title: "DIY drone"
+title: "Homemade drone"
 date: 2013-11-08
 category: practical
 image: /projects/drone/drone.jpg
