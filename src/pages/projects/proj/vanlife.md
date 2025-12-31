@@ -48,9 +48,9 @@ Lastly I used woodoil to treat the inside. I really loved how it made the wood t
 
 ## Electricity
 
-So on to something more interesting, but a hell of a lot more expensive. Electricity!
-
 ![image of electric systems](/projects/vanlife/electric.jpg)
+
+So on to something more interesting, but a hell of a lot more expensive. Electricity!
 
 The electrical systems consisted of some key components:
 - One 12volts "House" battery of 200AH.
@@ -75,51 +75,51 @@ I decided on a dieselheater for keeping warm. The heater slowly burns diesel and
 
 ## Water & Cooking
 
-![img](/projects/vanlife/kitchen.jpg)
+![image of burners](/projects/vanlife/kitchen.jpg)
 
 The water system in the van was quite simple. I installed a 20Litre tank up above the sink. This made the sink gravity feed. It was nice having water even if the power was gone. However, installing the tank right above the sink made for quite an annoyingly small sink. For cooking I installed 2 gas tops. I decided on not installing an oven, mostly because I simply ran out of time, but the burners worked well. I ended up never connecting the autoignition as turning on the stove via matches was a little too cosy.
 
 
 ## Gaming?
 
-![img](/projects/vanlife/computer.jpg)
+![image of pc](/projects/vanlife/computer.jpg)
 
 I also obviously installed a stationary gaming tower with dedicated graphics. Which is exactly as stupid as it sounds. I built the computer into the wall and built in a sound system and subwoofer. The sound system was super nice and I ended up using it all the time, the computer however was rather power hungry, and also I dont game. 
 
-![img](/projects/vanlife/gaming.jpg)
+![image of pc](/projects/vanlife/gaming.jpg)
 
 I later removed it. I also feared all the shaking would end up damaging the machine.
 
 
 ## Car stuff
 
-![img](/projects/vanlife/dash.jpg)
+![image of dash](/projects/vanlife/dash.jpg)
 
 I also installed an expedition lightbar at the front of the van. I connected the lightbar to my normal longlights, but made it so that I had to flip a dedicated dashboard switch as well. Im really happy about how the dash turned out, and it was perhaps my favorite part of the whole build although small and easy to build. The homemade dash contains the ampmeter for charging the house batteries, the switch for the new lightbar and some temperature sensors as well as a voltmeter to check the dynamo just for fun.
 
-![img](/projects/vanlife/done1.jpg)
+![image of built car](/projects/vanlife/done1.jpg)
 
 Although i completed the dash some weeks after the semester had begun you never truly say yourself done with a project like this. Its constant upkeep and something is always needing to be replaced, upgraded or changed. I later redesigned the dynamo setup, upgraded the 230V system. Repaired the water system and added more lighting. Still super proud I more or less completed according to schedule and in time for semester.
 
-![img](/projects/vanlife/done2.jpg)
+![image of built car](/projects/vanlife/done2.jpg)
 
 ## Life in a car
 
 The first thing to happen would obviously be the door falling off. Before I was even done building the car, I slammed the side door closed and was dumbfounded to see it close with an odd clonk to then slowly tip outward and completely fall off. Quite annoying, but also kind of funny. I ended up replacing the door slider arm as well as a couple of ball bearings, luckily not the worlds hardest fix, but i did get this picture where the door is held on via straps for a climbing adventure.
 
-![img](/projects/vanlife/door.jpg)
+![image of strapped on door](/projects/vanlife/door.jpg)
 
 I soon came to understand that living in a car whilst studying was not as rare as I initially feared. We were at least 4 vans in Trondheim housing full time students that semester. We all parked on the same parking making almost a small community of car dwellers. A tiny trailer park if you may. This community was a lot more important than I realized going into the project. We had some community dinners and shared experiences and stories. 
 
-![img](/projects/vanlife/food.jpg)
+![image of car inside](/projects/vanlife/food.jpg)
 
 After some months being parked around the school I decided to drive to spain with some friends. We were 3 cars and some more people flying down. One week on the way, one in france, and 2 weeks in spain. Went to fontainebleau to go bouldering and margalef plus siurana for climbing. Truly an adventure. I nearly drove into a river, did drive into another car, and almost drove off a mountain road. Spain should really be investigated in some international court for making the most cartoonlike, impossibly steep, no guardrail, stupidly narrow, deadly roads ever. I was stuck at a 180 degree corner up what felt like a 45 degree road. As i started driving the car just spun backwards towards a rather deadly cliffside. Had to get some Spaniard to sit on the front of the car to provide the necessary downforce for making the car crawl up the road. Did I mention this was dry asphalt with added deep grooves for traction? How dangerous can you even make roads? 
 
-![img](/projects/vanlife/spain.jpg)
+![image of spain trip](/projects/vanlife/spain.jpg)
 
 After this i spent december in Trondheim for exams. This was when i decided that enough was enough. I remember waking up and checking the temp inside the car just to read negative 15 degrees celsius. Stayed out january just out of pure spite, and then couch-surfed until i found a place to move into. 
 
-![img](/projects/vanlife/winter.jpg)
+![image of car in winter](/projects/vanlife/winter.jpg)
 
 ## Reflections
 
@@ -139,4 +139,4 @@ I sold the van later the next semester. I even made some marginal profit so the 
 
 Its now 2025 and some weeks ago I was driving in my Corolla to go freediving. I drove past a red van looking somewhat familiar, and even joked that it looked like the one I had some years ago. Driving closer I realized, that yes, it truly was. The car was sold in Oslo, so how it ended being parked just a kilometer from where I live in Trondheim seems somewhat mysterious. Perhaps it just wanted to say hey. Looks like its still in use and hopefully the owners whoever they may be now are happy with it.
 
-![img](/projects/vanlife/meet.jpg)
+![image of seeing the car one last time](/projects/vanlife/meet.jpg)

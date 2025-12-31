@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Mirror
 date: 2018-04-18
-catagory: story
+category: story
 ---
 Once upon a time there was a village. There was nothing especially interesting about this village, besides its location. For to the west of the village there was a huge wall. It stretched all the way to the skies, far past the eye could see. Its construction was of huge stone blocks, each much heavier than any man could lift, and it stretched as far north and as far south as any man had ever gone.
 

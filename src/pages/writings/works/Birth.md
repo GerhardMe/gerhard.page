@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Birth
 date: 2025-11-21
-catagory: poem
+category: poem
 ---
 
 I am convinced that there is a reason we forget birth. Birth is so chaotic and entirely violent that the human spirit cannot comprehend it. We come out screaming, so hurt we don’t even understand that we are alive. The spirit ripped apart, brutally torn from itself, isolated and given want. We want to live then, we cling to it, gasping for air, but we don't even know what life is.

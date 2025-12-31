@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Duckmouse
 date: 2023-08-20
-catagory: draft2
+category: InProgress
 ---
 
 

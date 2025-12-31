@@ -91,27 +91,28 @@ const { frontmatter } = Astro.props;
 
     :global(p) {
       margin-bottom: 1em;
-
-      :global(img) {
-        display: block;
-        margin: auto;
-        max-width: calc(100% - 2em);
-        max-height: 30em;
-
-        border-radius: 0.2em;
-        box-shadow: 0 0 8px var(--color-shadow);
-      }
-
-      :global(img:before) {
-        display: block;
-        padding: 4em;
-        text-align: center;
-        font-style: italic;
-        color: var(--color-bg-dark);
-      }
     }
     :global(p:has(> img:only-child)) {
       padding: 2em 1em 2em 1em;
+    }
+
+    :global(img) {
+      display: block;
+      margin: auto;
+      max-width: calc(100% - 2em);
+      max-height: 40em;
+
+      border-radius: 0.2em;
+      box-shadow: 0 0 8px var(--color-shadow);
+    }
+
+    :global(img:before) {
+      display: block;
+      font-size: 0.8em;
+      padding: 4em;
+      text-align: center;
+      font-style: italic;
+      color: var(--color-bg-dark);
     }
 
     :global(h1, h2, h3) {

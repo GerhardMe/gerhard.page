@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Dead wood
 date: 2025-12-30
-catagory: poem
+category: poem
 ---
 
 Moving through the forest I realize how dead it really is.

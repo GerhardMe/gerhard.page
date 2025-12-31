@@ -2,7 +2,7 @@
 layout: /src/layouts/article.astro
 title: Edge of Reason
 date: 2025-11-15
-catagory: story
+category: story
 ---
 
 I found myself in a room. It was a workshop of some sorts. The walls were littered with complex drawings of machines I could only guess the function of. The floor was made of large old wooden boards, and from the wooden roof there hung countless lamps in all different shapes and forms. In the middle of the room there was a hexagonal desk. It was so full of papers and devices of immense complexity that the surface was almost entirely covered. By the desk there stood a boy. He looked to be around 8. He wore a simple yellow and black oversized sweater. Although his physical appearance was nothing unordinary for an 8 year old, his eyes looked rather too inquisitive and old.
