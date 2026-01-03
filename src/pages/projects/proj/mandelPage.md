@@ -6,9 +6,7 @@ category: code
 image: /projects/mandel/mandel.png
 ---
 
-[mandel.page](https://mandel.page)
-
-As I started to prepare closing down crashgami, I wanted a coding project. It had been a fair while since I had made anything web based, and I wanted to freshen up on the technology and methodology. I had at that time developed an interest in fractals and the math making them up. I therefore thought it fitting to make a mandelbrot explorer. One of the main goals for the project was to explore using AI for coding projects. I use AI for simple scripts and often to quickly make boilerplate, but rarely for larger projects as I find it cumbersome and messy. 
+As I started to prepare closing down crashgami, I wanted a coding project. It had been a fair while since I had made anything web based, and I wanted to freshen up on the technology and methodology. I had at that time developed an interest in fractals and the math making them up. I therefore thought it fitting to make a mandelbrot explorer. One of the main goals for the project was to explore using AI for coding projects. I use AI for simple scripts and often to quickly make boilerplate, but rarely for larger projects as I find it cumbersome and messy. The resulting project became [mandel.page](https://mandel.page).
 
 ## Plan
 
@@ -51,4 +49,4 @@ Lastly I added a small written text about the mandelbrot set itself. You may see
 
 ![Image](/projects/mandel/txt.png)
 
-I really recommend taking the website for a spin. All windows are draggable, can be minimized and can be reopened via the small links in the bottom right. There you can also find the question mark displaying the text. Enjoy!
+I really recommend taking the [website](https://mandel.page) for a spin. All windows are draggable, can be minimized and can be reopened via the small links in the bottom right. There you can also find the question mark displaying the text. Enjoy!
