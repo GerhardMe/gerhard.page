@@ -283,13 +283,13 @@ import skrue from "../assets/garden/skrue.jpg";
   html,
   body {
     font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
-    margin: 0px;
-    padding: 0px;
-    font-size: 18px;
+    margin: 0;
+    padding: 0;
+    font-size: 0.93vw;
     background-image: url(/wallpapers/diamond.png);
     background-repeat: repeat;
     background-color: #4eff37;
-    background-size: 40px;
+    background-size: 2vw;
   }
 
   * {
@@ -299,57 +299,59 @@ import skrue from "../assets/garden/skrue.jpg";
   /* --- --- --- --- WELCOME --- --- --- --- */
 
   .welcome {
-    top: 100px;
-    left: 150px;
+    top: 5.2vw;
+    left: 7.8vw;
 
     .man {
-      height: 250px;
+      width: 12vw;
     }
 
     .panik {
-      left: 10px;
+      left: 0.5vw;
+      width: 13.5vw;
+
       visibility: hidden;
       animation: shake 80ms linear infinite;
       animation-play-state: running;
     }
 
     .text {
-      border: 8px groove rgb(13, 255, 223);
+      border: 0.5vw groove rgb(13, 255, 223);
       background-color: #4eff37;
 
-      width: 567px;
-      height: 225px;
+      width: 30vw;
+      height: 11.5vw;
 
-      left: 120px;
-      top: 40px;
+      left: 6vw;
+      top: 2vw;
 
       span {
-        top: 13px;
-        left: 80px;
+        top: 0.5vw;
+        left: 4.3vw;
         font-size: 1.1em;
         font-weight: bold;
       }
 
       p {
-        top: 43px;
-        left: 80px;
+        top: 2.1vw;
+        left: 4.3vw;
 
-        margin-right: 1em;
+        margin-right: 1vw;
         text-align: justify;
       }
     }
 
     .homeBtn {
-      width: 200px;
-      padding: 2px 10px;
+      width: 10vw;
+      padding: 0.1vw 0.1vw;
 
-      top: 215px;
-      left: 470px;
+      top: 10.9vw;
+      left: 25.3vw;
     }
 
     .btn {
-      left: 583px;
-      top: 55px;
+      left: 30.5vw;
+      bottom: -4.4vw;
       cursor: pointer;
     }
   }
@@ -361,7 +363,7 @@ import skrue from "../assets/garden/skrue.jpg";
     color: rgb(255, 255, 255);
     cursor: pointer;
 
-    border: 3px solid;
+    border: 0.3vw solid;
     border-top-color: #cce0ff;
     border-left-color: #99c2ff;
     border-right-color: #003366;
