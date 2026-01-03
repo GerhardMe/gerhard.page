@@ -44,3 +44,5 @@ Later that summer the boxes of computer mice appeared. When they arrived at the 
 We now only had one issue left. Selling these mice. We started with quite a few sales to friends and friends of friends. We bought some stickers and gave them with the mouse. It quickly became apparent that even though I had found the process of building the website and buying the mice to be fun, selling them was much more tedious. Isak had quite a few good ideas on marketing, but we sadly never came round to do it. As of writing this post we have sold 48 of the total 500 mice.
 
 There sadly appeared one tiny tiny problem. The mice have all started to leak oil. It turns out that making computer equipment with oil inside is not a great idea. The mice were not well sealed and we slowly began understanding why no one else sold these mice. We have tried to stop the leaking with a variety of glues, but as of now we have found no fix. Duckmouse is therefore for now over and shut down. However the website is still up, and who knows. Perhaps we figure out how to fix them or maybe we find another usage for them altogether.
+
+[duckmouse.no](https://duckmouse.no/).
