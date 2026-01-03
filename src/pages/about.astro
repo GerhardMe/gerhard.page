@@ -58,12 +58,14 @@ import meImg from "../assets/misc/me.jpg";
       </div>
     </div>
   </div>
-  <a
-    class="site"
-    href="https://github.com/GerhardMe/gergus3"
-    target="_blank"
-    rel="noopener noreferrer"><span class="icon">&#xf09b;</span> site repo</a
-  >
+  <div class="siteBox">
+    <a
+      class="siteLink"
+      href="https://github.com/GerhardMe/gergus3"
+      target="_blank"
+      rel="noopener noreferrer"><span class="icon">&#xf09b;</span> site repo</a
+    >
+  </div>
 </Layout>
 
 <style>
@@ -129,15 +131,22 @@ import meImg from "../assets/misc/me.jpg";
     border-bottom: none;
   }
 
-  .site {
-    border-top: 1px solid var(--color-bg-dark);
-    margin: 0.5em;
-    padding-top: 3em;
+  .siteBox {
+    width: 100%;
     display: block;
-    margin: center;
+
+    padding: 0.5em;
+  }
+  .siteLink {
+    border-top: 1px solid var(--color-bg-dark);
+    display: block;
+
+    padding-top: 3em;
+    padding-bottom: 0;
+
+    width: 100%;
     text-justify: center;
   }
-
   .center {
     margin-left: auto;
     margin-right: auto;
@@ -164,9 +173,6 @@ import meImg from "../assets/misc/me.jpg";
       .subbox {
         width: 100%;
       }
-    }
-    .site {
-      margin-top: -2em;
     }
   }
 </style>
