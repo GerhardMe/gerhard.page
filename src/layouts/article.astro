@@ -107,17 +107,17 @@ const { frontmatter } = Astro.props;
   }
 
   #topImage {
-    width: calc(100% + 2em);
-    margin: 2em -1em;
+    width: calc(100% + 1em);
+    margin: 2em -0.5em;
 
     border-radius: 0.2em;
     box-shadow: 0 0 8px var(--color-shadow);
   }
 
-  @media (max-width: 900px) {
+  @media (max-width: 720px) {
     #topImage {
-      width: calc(100% + 2em);
-      margin: 1em -1em;
+      margin: 1em -0.5em;
+      border-radius: 0;
     }
   }
 
