@@ -47,8 +47,11 @@ select {
     transition: opacity 0.2s ease;
 }
 
-.hide {
-    opacity: 0;
+
+@media (max-width: calc(1100px)) {
+    .hide {
+        opacity: 0;
+    }
 }
 
 /* Collor palette */
