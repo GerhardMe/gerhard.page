@@ -135,6 +135,13 @@ select {
     font-style: normal;
 }
 
+@font-face {
+    font-family: "Times New Roman";
+    src: url("/fonts/TimesNewRoman.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
 .icon {
     font-family: "Icons";
 }
