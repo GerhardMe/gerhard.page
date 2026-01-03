@@ -18,8 +18,6 @@ import synec from "../assets/garden/synec.jpg";
 import n1MP4 from "../assets/garden/n1.mp4";
 import star2 from "../assets/garden/star2.gif";
 import wtf from "../assets/garden/wtf.mp4";
-import buran from "../assets/garden/buran.jpg";
-import tec from "../assets/garden/technologic.gif";
 import car from "../assets/garden/tempo.jpg";
 import corri from "../assets/garden/corri.png";
 import nes from "../assets/garden/nes.jpg";
@@ -256,19 +254,6 @@ import skrue from "../assets/garden/skrue.jpg";
     <img class="penguin" src={penguin.src} /></a
   >
 
-  <img
-    class="buran"
-    src={buran.src}
-    onclick="let b=document.querySelector('.buran'); 
-      if(b.style.height==='1000px'){  
-      b.style.height = '300px';
-  b.style.left = '1525px';
-      }
-      else
-      {b.style.height = '1000px';
-  b.style.left = '900px';}"
-  />
-
   <div class="home">
     <btn class="homeBtn" onmouseup="window.location.href='/';">Nach Hause!</btn>
     <img class="door" src={door.src} />
@@ -279,7 +264,6 @@ import skrue from "../assets/garden/skrue.jpg";
 
 <style>
   /* --- --- --- --- GENNERAL --- --- --- --- */
-
   html,
   body {
     font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
@@ -291,85 +275,68 @@ import skrue from "../assets/garden/skrue.jpg";
     background-color: #4eff37;
     background-size: 2vw;
   }
-
   * {
     position: absolute;
   }
-
   /* --- --- --- --- WELCOME --- --- --- --- */
-
   .welcome {
     top: 5.2vw;
     left: 7.8vw;
-
     .man {
       width: 12vw;
     }
-
     .panik {
       left: 0.5vw;
       width: 13.5vw;
-
       visibility: hidden;
       animation: shake 80ms linear infinite;
       animation-play-state: running;
     }
-
     .text {
       border: 0.5vw groove rgb(13, 255, 223);
       background-color: #4eff37;
-
       width: 30vw;
       height: 11.5vw;
-
       left: 6vw;
       top: 2vw;
-
       span {
         top: 0.5vw;
         left: 4.3vw;
         font-size: 1.1em;
         font-weight: bold;
       }
-
       p {
         top: 2.1vw;
         left: 4.3vw;
-
         margin-right: 1vw;
         text-align: justify;
       }
     }
-
     .homeBtn {
       width: 10vw;
       padding: 0.1vw 0.1vw;
-
       top: 10.9vw;
       left: 25.3vw;
     }
-
     .btn {
       left: 30.5vw;
       bottom: -4.4vw;
       cursor: pointer;
+
+      width: 4.58333333333vw;
     }
   }
-
   .homeBtn {
     text-align: center;
-
     background-color: rgb(0, 0, 255);
     color: rgb(255, 255, 255);
     cursor: pointer;
-
     border: 0.3vw solid;
     border-top-color: #cce0ff;
     border-left-color: #99c2ff;
     border-right-color: #003366;
     border-bottom-color: #001a33;
   }
-
   .homeBtn:active {
     border-top-color: #001a33;
     border-left-color: #003366;
@@ -394,30 +361,29 @@ import skrue from "../assets/garden/skrue.jpg";
       transform: rotate(0deg);
     }
   }
-
   /* --- --- --- --- GOLDEN REODOR --- --- --- --- */
-
   .golden-reodor {
-    left: 830px;
-    top: 90px;
-
+    left: 43.229vw;
+    top: 4.688vw;
     .golden {
-      height: 800px;
-
+      height: 41.667vw;
       animation: slowspin 40s linear infinite;
       animation-play-state: paused;
     }
-
     .reodor {
-      top: 350px;
-      left: 580px;
+      top: 18.229vw;
+      left: 30.208vw;
+
+      img {
+        width: 12vw;
+      }
 
       .reodor-fix {
-        height: 30px;
-        width: 60px;
+        height: 1.563vw;
+        width: 3.125vw;
         background-color: rgb(194, 194, 194);
-        top: 40px;
-        left: 60px;
+        top: 2.083vw;
+        left: 3.125vw;
       }
     }
   }
@@ -429,269 +395,210 @@ import skrue from "../assets/garden/skrue.jpg";
       transform: rotate(360deg);
     }
   }
-
   /* --- --- --- --- CAVE --- --- --- --- */
-
   .caveDiv {
-    top: calc(40px * 43);
-    left: calc(40px * 36);
-
+    top: 90vw;
+    left: 76vw;
     .cave {
-      height: calc(40px * 8);
+      height: 16vw;
     }
-
     .miner {
-      height: 40px;
-      top: calc(40px * 5);
-      left: calc(40px * 1);
+      height: 2vw;
+      top: 10vw;
+      left: 2vw;
     }
-
     .spider {
-      height: 80px;
-      top: 242px;
-      left: 200px;
+      height: 4vw;
+      top: 12vw;
+      left: 10vw;
     }
-
     .dug {
-      height: 40px;
-      top: 222px;
-      left: 155px;
+      height: 1.9vw;
+      top: 11.8vw;
+      left: 7.4vw;
     }
   }
-
   /* --- --- --- --- N1 --- --- --- --- */
-
   .n1 {
-    top: 462px;
-    left: 320px;
+    top: 24.063vw;
+    left: 16.667vw;
 
+    img {
+      width: 26.1vw;
+    }
     .n1-mp4 {
-      width: 500px;
-      top: 60px;
-      left: -90px;
-      border: 10px double #62008f;
+      width: 26.042vw;
+      top: 3.125vw;
+      left: -4.688vw;
+      border: 0.521vw double #62008f;
       opacity: 0;
       transform: scale(0.3) rotate(-90deg);
       transition: all 0.5s ease-out;
     }
-
     .n1-mp4.fadein {
       opacity: 1;
       transform: scale(1) rotate(0);
     }
   }
-
   /* --- --- --- --- MINE --- --- --- --- */
-
   .mine {
-    top: calc(40px * 58);
-    left: calc(40px * 1);
-
-    height: calc(40px * 12);
+    top: 120vw;
+    left: 2vw;
+    height: 24vw;
   }
-
   /* --- --- --- --- EARTH RISE --- --- --- --- */
-
   .earth-border {
-    top: 2650px;
-    left: 300px;
-
+    top: 138.021vw;
+    left: 15.625vw;
     .earth {
-      height: 400px;
-      top: 16px;
-      left: 14px;
+      height: 20.833vw;
+      top: 0.833vw;
+      left: 0.729vw;
       transform: rotate(90deg);
     }
-
     .border {
-      height: 430px;
+      height: 22.396vw;
     }
   }
-
   /* --- --- --- --- PER TROL --- --- --- --- */
-
   .perTrol {
-    top: 2823px;
-    left: 740px;
-
+    top: 147.031vw;
+    left: 38.542vw;
     .per {
-      height: 400px;
+      height: 20.833vw;
     }
-
     .trol {
-      height: 400px;
+      height: 20.833vw;
       display: none;
-      border: 4px solid black;
+      border: 0.208vw solid black;
     }
   }
-
   /* --- --- --- --- WTF --- --- --- --- */
-
   .wtf {
-    top: 2820px;
-    left: 1065px;
-    height: 250px;
+    top: 146.875vw;
+    left: 55.469vw;
+    height: 13.021vw;
   }
-
   /* --- --- --- --- GOOD --- --- --- --- */
-
   .skull {
-    height: 900px;
-    top: 850px;
-    left: 890px;
-
-    box-shadow: 10px 10px 0px rgba(0, 0, 0, 0.479);
+    height: 46.875vw;
+    top: 44.271vw;
+    left: 46.354vw;
+    box-shadow: 0.521vw 0.521vw 0vw rgba(0, 0, 0, 0.479);
   }
-
   .hmc {
-    height: 500px;
-    top: 5835px;
-    left: 276px;
+    height: 26.042vw;
+    top: 303.906vw;
+    left: 14.375vw;
   }
-
   .synec {
-    height: 600px;
-    top: 1148px;
-    left: 170px;
+    height: 31.25vw;
+    top: 59.792vw;
+    left: 8.854vw;
   }
-
   .skrue {
-    width: 280px;
-    top: 1115px;
-    left: 595px;
-    border: 6px ridge #00ffb3;
+    width: 14.583vw;
+    top: 58.073vw;
+    left: 30.99vw;
+    border: 0.313vw ridge #00ffb3;
   }
-
   .rest {
-    width: 270px;
-    height: 270px;
-    top: 1500px;
-    left: 598px;
-
+    width: 14.063vw;
+    height: 14.063vw;
+    top: 78.125vw;
+    left: 31.146vw;
     .rest-img {
       width: inherit;
     }
-
     a {
       display: none;
       background-color: rgb(133, 0, 173);
       color: rgb(0, 0, 0);
-
-      bottom: 20px;
-      left: 160px;
-
+      bottom: 1.042vw;
+      left: 8.333vw;
       padding-left: 1em;
       padding-right: 1em;
     }
   }
-
   .nes {
-    height: 500px;
-    top: 1785px;
-    left: 275px;
+    height: 26.042vw;
+    top: 92.969vw;
+    left: 14.323vw;
   }
-
   .dp {
-    height: 250px;
-    top: 2029px;
-    left: 1250px;
+    height: 13.021vw;
+    top: 105.677vw;
+    left: 65.104vw;
   }
-
   /* --- --- --- --- NIPS --- --- --- --- */
-
   .birb {
     transform: scaleX(-1);
-    height: 140px;
-    top: 330px;
-    left: 320px;
+    height: 7.292vw;
+    top: 17.188vw;
+    left: 16.667vw;
   }
-
   .l {
-    height: 200px;
-    top: 2320px;
-    left: 160px;
+    height: 10.417vw;
+    top: 120.833vw;
+    left: 8.333vw;
     transform: rotate(180deg);
     border-radius: 50%;
   }
-
   .corri {
-    height: 200px;
-    top: 1000px;
-    left: 785px;
+    height: 10.417vw;
+    top: 52.083vw;
+    left: 40.885vw;
   }
-
   .star2 {
-    height: 200px;
-    top: 700px;
-    left: 790px;
+    height: 10.417vw;
+    top: 36.458vw;
+    left: 41.146vw;
   }
-
   .quest {
-    height: 130px;
-    top: 1824px;
-    left: 1290px;
+    height: 6.771vw;
+    top: 95vw;
+    left: 67.188vw;
   }
-
   .eyes {
-    height: 500px;
-    top: 2148px;
-    left: 590px;
+    height: 26.042vw;
+    top: 111.875vw;
+    left: 30.729vw;
   }
-
   .shooting {
-    height: 500px;
-    top: 1048px;
-    left: 390px;
+    height: 26.042vw;
+    top: 54.583vw;
+    left: 20.313vw;
   }
-
-  .buran {
-    height: 300px;
-    top: 2310px;
-    left: 1525px;
-
-    border: 12px double #000000;
-    border-radius: 50%;
-
-    transition: all 3s ease;
-  }
-
   .car {
-    height: 500px;
-    top: 2310px;
-    left: 615px;
+    height: 26.042vw;
+    top: 120.313vw;
+    left: 32.031vw;
   }
-
   .home {
-    top: 3400px;
-    right: 150px;
-
-    width: 100px;
-    height: 170px;
+    top: 177vw;
+    right: 4vw;
+    width: 5vw;
     .door {
-      height: 150px;
+      height: 8vw;
     }
-
     .homeBtn {
-      width: 120px;
-
-      top: -50px;
-      left: 10px;
+      width: 7vw;
+      top: -2vw;
     }
   }
-
   .linux {
-    top: 1275px;
-    left: 1625px;
+    top: 66.406vw;
+    left: 84.635vw;
+    height: 10vw;
   }
-
   .nixos {
-    top: 1735px;
-    left: 215px;
+    top: 90.365vw;
+    left: 11.198vw;
+    height: 6vw;
   }
-
   .penguin {
-    height: 200px;
-    top: 2385px;
-    left: 160px;
+    height: 10.417vw;
+    top: 124.219vw;
+    left: 8.333vw;
   }
 </style>
