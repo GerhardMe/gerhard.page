@@ -44,8 +44,10 @@ To sum up this was the full system:
 ![Image](/projects/mandel/red.png)
 
 However the point was neither speed nor code quality. It was how fun the site was to use and how quickly I could build it using AI systems. I ended up adding some color controls, a quick glow shader and made the whole thing look rather linuxy if that's a thing. I really like how it turned out. Apart from a few bugs and not being optimized for mobile at all, I do believe the project was a success. 
+
 It's quite a lot smaller than some of the other projects I have done, but I am happy with the end result, and I really liked the challenge. I also found out that Claude is much better at coding than Chat, and I do believe I learnt a lot on how to best use AI in its current state in designing larger projects. 
-Lastly I added a small written text about the mandelbrot set itself. You may see it if you click the small question mark in the bottom right corner of the site. Really neat how I was able to display algebra in the browser and the semitransparent background makes for a cool reading experience. And no, none of the text written on neither this site nor mandel.page is written or semiwritten by AI. 
+
+Lastly I added a small written text about the mandelbrot set itself. You may see it if you click the small question mark in the bottom right corner of the site. Really neat how I was able to display algebra in the browser and the semitransparent background makes for a cool reading experience. And no, none of the text written on this site or mandel.page is written or semiwritten by AI. 
 
 ![Image](/projects/mandel/txt.png)
 
