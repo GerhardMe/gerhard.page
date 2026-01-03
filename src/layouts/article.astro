@@ -48,10 +48,20 @@ const { frontmatter } = Astro.props;
     position: relative;
 
     .title {
+      white-space: nowrap;
+
       text-align: center;
       border-bottom: 1px solid var(--color-bg-dark);
       margin-right: 1.2em;
       padding-bottom: 0.3em;
+
+      font-family: "Times New Roman", Times, serif;
+    }
+
+    @media (max-width: 720px) {
+      .title {
+        text-align: left;
+      }
     }
 
     img {
@@ -62,11 +72,13 @@ const { frontmatter } = Astro.props;
     }
 
     .date {
+      font-family: "Times New Roman", Times, serif;
+
       margin-top: 1em;
       color: var(--color-text-blockquote);
 
       p {
-        font-size: 0.8em;
+        font-size: 0.9em;
       }
 
       display: flex;
@@ -77,9 +89,11 @@ const { frontmatter } = Astro.props;
   }
 
   .backBtn {
+    font-family: "Times New Roman", Times, serif;
+
     cursor: pointer;
     color: var(--color-text-link);
-    font-size: 0.8em;
+    font-size: 0.9em;
 
     &:hover {
       text-decoration: underline;
