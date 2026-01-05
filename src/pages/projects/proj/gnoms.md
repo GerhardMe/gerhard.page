@@ -6,9 +6,9 @@ category: code
 image: /projects/gnoms/neo.png
 ---
 
-Over the course of about a year I have slowly built a system for managing my NixOS setup. Namly Gerhard's NixOS Management System or **GNOMS** for short. I have long been a fan of Linux and tried many distributions. Mostly I used Arch, but ended up abandoning it for its tendency to break. I am now a steadfast fan of NixOS and hope to keep using it for the foreseeable future.
+Over the course of about a year I have slowly built a system for managing my NixOS setup. Namely Gerhard's NixOS Management System or **GNOMS** for short. I have long been a fan of Linux and tried many distributions. Mostly I used Arch, but ended up abandoning it for its tendency to break. I am now a steadfast fan of NixOS and hope to keep using it for the foreseeable future.
 
-I Still don't find NixOS perfect. It requires files to be tracked in git when using flakes, and configurations have a tendency to get messy fast. I also like using the intended files and filetypes for dotfiles, as it makes it easier to port to other systems if needed. In addition to this, I also wanted a way to handle custom scripts.
+I still don't find NixOS perfect. It requires files to be tracked in git when using flakes, and configurations have a tendency to get messy fast. I also like using the intended files and filetypes for dotfiles, as it makes it easier to port to other systems if needed. In addition to this, I also wanted a way to handle custom scripts.
 
 I built a system that does all this and more. It's not flashy or large, but its architecture is solid and highly modular. The [setup](https://github.com/GerhardMe/GNOMS) is easily installed from GitHub. It's simply 3 lines in any NixOS terminal and you have the exact same system as me, down to the colour of the Firefox theme. I wanted to make it easy to install and set up on new machines. Cloning the project, you only really need to change one file to make it uniquely yours. In the future it would also be cool to make a custom installer ISO.
 
