@@ -1,5 +1,11 @@
 # gerhard.page
 
-[gerhard.page](https://gerhard.page) is my personal webpage. 
+[gerhard.page](https://gerhard.page) is my personal webpage.
 
-Its built with Astro & PostCSS.
+Built with:
+- Node
+- Astro
+- PostCSS
+- pnpm
+
+This page is both a love letter to the early internet, a functional portfolio, and a personal blog.
