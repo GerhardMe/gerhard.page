@@ -1,0 +1,70 @@
+---
+layout: /src/layouts/article.astro
+title: On linux
+date: 2026-01-05
+category: reflection-draft
+---
+
+## My introduction to Linux
+
+In 2021 I started using Linux. In 2022 I was on Arch. Since then I have tried around 10 different distros and setups, everything from LARBS to Ubuntu with some Tails, Fedora, and Omarchy sprinkled in between. In late 2024 I was back to Windows. Linux seemed like a perfect dream, but a dream nevertheless—always breaking or incompatible. I love computers, but an OS cannot be my entire life. I started contemplating giving in and eating of the forbidden tree of the Apple ecosystem, but just then a hand came down from above and showed me NixOS. I haven't looked back since.
+
+I ended up making a management system on top of NixOS that makes the already great system even simpler to use and maintain: Gerhard's NixOS Management System, or GNOMS for short. This is the philosophy and experiences of building that system and of using Linux in general.
+
+This story begins in 2021. I had started my informatics studies and joined its development team. It was here I met Ankha. He said I needed some program for web development, and being naive and young I agreed to let him install something on my laptop. 10 minutes later he came back with a dual boot system running Windows and Manjaro. It seems silly to write, but I cannot overstate how thankful I am for this. Not because Linux is that cool, but rather because the Linux philosophy and community has seriously changed my perspective on so many things—from politics, economics, and nature to engineering and even human connection. Sounds dumb, but I'm afraid it's true.
+
+Regardless, let's back up to Manjaro again. I quickly fell in love with the terminal. I was by no means good with it, but even writing a simple `cd` or `cat` made me feel so in control of the computer. No longer did I feel like I asked the computer for help; now it felt like I commanded it. The machine became a tool rather than a useful adversary. I actually understood those simple commands. I understood that the computer understood them, and I could better predict the computer's behaviour. This insight was why I wanted to explore Linux more.
+
+## Computers as tools
+
+This was the first main reason I fell in love with Linux: the way it taught you to work with your machine and not against it. Use it as a tool, not some mystical object of magic. This was also my reason for studying informatics. I wanted to understand the workings of a computer. Why are some programs faster than others? Where are the programs stored? Did computers really become slower with time? I started to find some answers while using Linux. Just as with new cars, what could have been done simply is now hidden behind large touch screens. Clicking a simple button spawns a 60fps animation using up GPU power. Hidden startup programs lag down the CPU in endless useless tasks.
+
+It did not take long before I broke my Manjaro setup. It ate my Windows partition, and suddenly I had neither a working Windows machine nor a working Manjaro partition. I then made the sane decision to repartition, but this time with Arch—like Ankha, the cool distro.
+
+Let me tell you, Arch is cool. It has a sick logo, it could only be installed through the terminal, and most importantly, you got to say you used it. All the cool kids use Arch, and to be fair it has some real advantages. The userbase is huge, so everything is there. This is the most common problem with Linux: some random program just does not work on Linux. But the Arch community is so large it actually gets some respect from developers, and most programs support Arch. It also forces you to customize—no initial GNOME or Plasma. I made my first i3 tiling setup and felt like the coolest hackerman there ever was.
+
+## Tiling managers
+
+This leads me to my second reason I stuck with Linux: tiling managers. Sure, Windows has some tiling controls and Mac might have something similar, but the purity of i3, dwm, and AwesomeWM simply cannot be beat. You may think marginally faster switching between tasks seems trivial, but I beg to disagree. I found myself not using my large external monitors anymore. I found myself able to have multiple simultaneous projects open on my machine without it becoming messy. This completely revolutionised how I used a computer. The lightness of the smaller tiling managers made old laptops suddenly lightning fast, and it even made me sell my tower PC. Suddenly I realised that computers never get slower—programs just become heavier. Since then I never bought another computer again. My old laptops are just as quick as the day I got them.
+
+Back to the story. I did get a semi-functional Arch system with i3 and used that for development. However, at that time I barely knew what I was doing and needed my Windows partition for everything non-code related. I believe I ended up doing an `rm -rf /*` on the root directory after I genuinely thought I was somewhere else on the machine. Suffice to say, I rebuilt my Arch. I really wanted to go deeper into Arch and decided to remove the Windows partition and go full Arch. Never go full Arch!
+
+I remember barely completing my exams, borrowing machines and frantically trying to get proprietary programs needed for exams on my machine. Not recommended. Again my Arch ended up breaking. If I remember correctly, this time it was less my fault—I got into some dependency hell I was not able to resolve. Defeated, I returned to Windows.
+
+After spending some time hating how slow Windows was and developing a deep hatred for the start menu—why the heck are there advertisements in an operating system I bought? How is that even legal?!—I ended up returning to Linux. However, having learned from my previous mistakes, I ideally did not want to touch my functional laptop at all. I ended up not having to by creating a completely removable bootable USB system. I installed Arch on a USB and even kept my files and home directory there. Since my build was so insanely much lighter than Windows, despite installing random Linux programs every time I needed to fix something, running the entire system encrypted from an external USB was surprisingly fast and unproblematic.
+
+I fastened the small USB to a necklace and walked around with my entire computer setup around my neck like some insane person for over a year. The system would copy itself over to RAM and boot from there. It meant some less RAM for the machine, but enough to drive most programs. It had 132GB of storage, so easily enough for all my programs and dotfiles. I really liked the setup. It essentially never touched my normal Windows computer, and I could boot up my exact laptop on any machine. Just had to disable secure boot.
+
+All good things must come to an end. There were two reasons why my USB necklace was abandoned. After a year of heavy use, the USB had started to swell and looked slightly fire-prone. The system had also become quite bloated. I couldn't manage my programs and did not remember what half of them did. I tried uninstalling some, but it often led to breakage. I abandoned the project and again went back to Windows, but this time with a plan to again go full Arch, thinking myself ready to tackle the challenge. I was not.
+
+## Open source
+
+The third reason I stick with Linux is for the community and its philosophy. Open source was a concept I was unfamiliar with before switching over to Linux. The Marxist dream realised, alive and well within the space of computers. I am no Marxist, and still no capitalist liberalist. I try not to identify with any group, and neither should you. I simply have opinions. Still, were I to have to choose an ideology at gunpoint, I might be tempted to choose the Linux open source dream. The ideology of the early internet, the ideas keeping the Wikipedia foundation alive, the software powering all the world's servers, the last bastion of cautious technology optimism.
+
+Around this time I started consuming Linux content. It started with installation guides and Reddit forums, but soon I found [Luke Smith](https://lukesmith.xyz/) and his rejection of modern society. I found [Mental Outlaw](https://www.youtube.com/@MentalOutlaw) and his insistence on privacy and ownership. I got into self-reliance content, became more negative towards social media, and generally a bigger fan of open source and the free internet.
+
+I saw a video essay critiquing large tech companies and industrial giants for becoming communists. Although the argument was nonsensical and obviously false if you define the word communism in any way that makes sense, the video has a deeper, more profound point. Communism aims to mass produce everything as a tool to make it accessible to the masses—standardising all and refusing to give you the option to truly own what was given you. (Communism as in what the Soviets had, not necessarily Marxism.) Contrary to popular belief, this works well with late stage capitalism. We have huge companies mass producing products that you never get to truly own. You cannot fix your standardised smartphone; you cannot paint your car either through leasing or simply because you need to keep its value for reselling.
+
+It's truly fascinating that the only truly Marxist, completely free products—what does not take your data or your money—are also completely personal. Linux is built as a platform. It's not mass produced; hell, its members cannot even agree on a kernel architecture. It's custom built every time. Linux is exactly what you need it to be, not anything more. Not the latest tech, not flashy. It will not force you to use AI, not send your files to the cloud, and especially it will not change unless you want it to. It's truly yours. Fully yours—you can do what you want. You want to remove the bootloader? OK, but you will break it.
+
+I have adopted this philosophy to more in life than just computers now. I own an old Toyota Corolla, buy used, and never lease. I want to own what I have, truly own it. I want to understand it, and I don't want it to behave in ways that I don't predict—so less bells and whistles, and more reliability. I downgraded my laptop to a ThinkPad because it's fixable, and never bought a new phone again. This all has the benefit of being environmentally friendly, which is also a nice plus.
+
+Later I came to understand this community is closely related to the rationalists, or post-atheists as they are called. After all this talk of Marxism and leftist ideas, let me not be misunderstood. This ideology is not leftism, it's not environmentalism, and it's not communist. This is the ideology that tech billionaires and crypto bros often start with. It's highly sceptical of big government and high taxes. It's unapologetically individualist, whilst embracing the town and urban lifestyle. As mentioned, I do not see myself as part of this community. I disagree with a lot and am uncertain of more. But this community has had a larger effect on my worldview and political opinion than any other ideology I have come across in the last 10 years, and Linux introduced me.
+
+## LARBS and overdooing it
+
+I reinstalled arch on my entire machine once again, but this time I was sick of brakage and reinstalling the same programs so I decided to try an autoinstaller. I installed [LARBS](https://larbs.xyz/). I knew this setupp was way to opinionated and basic for my needs, but i thought i could build on it and in the prosess perhaps learn some cool new programs. 
+
+## Why Arch is not for me
+
+Arch is great, but for the wrong reasons. Its a rolling releace distrubution meaning it has no stable realises. This is cool if you want bleeding edge and fun for most usecases, but its unstable. Suddenly an uptade to a program comes out that breaks somthing in your system. It may be a dependency hell, some bug in a spesific program or something else entierly. This is not the issue in itself, as I am the type of person that finds fixing theese kinds of problems fun. However the problem is that I often need my computer for other stuff. Working, sending an e mail, or just connecting the damed thing to a tv for watcing a movie. 
+
+This sudden breakage in times you dont have the time to fix stuff properly leads to a lot of taip to hold the system together. Its the same story every new install. It works great, then somthing breaks. I fix it quickly. Forget to ducument, somthing more breaks and I again build on the worsening foundations. I therefore left Arch. I love arch but it really could not be my hwole life. I want to be gone from my computer for a month, come back update the programs and not have it break. Arch could not reliably provide this. It seemed that the relentless compromise between freedom and safety also apies to software. Who would have thought?
+
+I distrojumped a while after that. I tried Ubuntu, Omarchi, Fedora and more. Alhough Fedory was a real solid option I anded upp contemplating switching to mac. I knew people were happy and it seemed the best compromise with rock solid support and fair custumsibility and the absolute nessesity of beeing UNIX baced.
+
+My closing thoughts on Arch spesificly is that I beleve to many people use it. I do not mean to hate, but do that manny people really ned rolling relice features? I suggust that arch is a reat way of learning linux and computers in gennerall but a less optimal way of actaully building a usefull tool. I know some people master it fully, but i dont seem to have nether the time nor knolage to feel safe enough using arch.
+
+## NixOS
+
+Late one winder night I was talking with a friend. He just discovered a new distro, NixOS. I scepticly listened, but couldnt seem to remeber anything more about that distro then it beeing considered super hard to use and really niche. I thougt it was in the ranks of VOID OS and Gentoo. Technicly cool, but little more then muccle cars designed to do one job really well, not suted well for all personel setupps. 
