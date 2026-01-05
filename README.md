@@ -1,6 +1,6 @@
 # gerhard.page
 
-[gerhard.page](https://gerhard.page) is my personal webpage.💻
+[gerhard.page](https://gerhard.page) is my personal webpage 💻!
 
 Built with:
 - Astro
