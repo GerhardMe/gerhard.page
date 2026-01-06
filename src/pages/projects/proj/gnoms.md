@@ -6,23 +6,23 @@ category: code
 image: /projects/gnoms/neo.png
 ---
 
-Over the course of about a year I have slowly built a system for managing my NixOS linux setup. This system was initially inspired by LARBS, but went on to become somthing different. I hope others might find ut usefull and get to explore NixOS in a more forgiving way. Perhaps it can be a stable platform for building your own setupps from.
+Over the course of about a year I have slowly built a system for managing my NixOS Linux setup. This system was initially inspired by LARBS, but went on to become something different. I hope others might find it useful and get to explore NixOS in a more forgiving way. Perhaps it can be a stable platform for building your own setups from.
 
 [Link](https://github.com/GerhardMe/GNOMS) to project.
 
 ## NixOS
 
-Firstly, whats NixOS? NixOS is a distrubution of linux, like ubutu, arch and debian. Every distrubution has somthing that sets it apart from the rest. Arch is has rolling release and debian is rock solid. NixOS is perhaps more spescial then most other distroes in that its ivered by a large config. This config determens your everything from your bootloadert to your firefox theme and everything in between. It can handle all your dotfiles, programs and firewall settings. As long as you have this config, you have your entire system. One may therefore ask, if you already have an exstensive managment system for your whole system, then why the hell does GNOMS exit? A management system on top of an already extensive management system?
+Firstly, what's NixOS? NixOS is a distribution of Linux, like Ubuntu, Arch and Debian. Every distribution has something that sets it apart from the rest. Arch has rolling release and Debian is rock solid. NixOS is perhaps more special than most other distros in that it's governed by a large config. This config determines everything from your bootloader to your Firefox theme and everything in between. It can handle all your dotfiles, programs and firewall settings. As long as you have this config, you have your entire system. One may therefore ask, if you already have an extensive management system for your whole system, then why the hell does GNOMS exist? A management system on top of an already extensive management system?
 
-Indeed thats exsacly what ive built. Although NixOS already handles a lot, I dont find it perfectly to my likling. Firstly It requires all files to be tracked in git, somthing thats rather annoying as I dont see the need to keep my hardware configuration in github. Secondly having everything declared by a single config file is perhaps exsaclty how it sounds. One stupendusly large and messy file. I would like to splitt my files into different sections as well as not having my dotfiles parsed to nix. I therefore want a system where I aso keeep my dotfiles as dotfiles for ease of use and ease of transfer to another system if needed in the future. In addition to all this. NixOS does not have a nice way of handling custum scripts. I like building some scripts and systems myself and want to store them with my config files as one large bulk. 
+Indeed that's exactly what I've built. Although NixOS already handles a lot, I don't find it perfectly to my liking. Firstly it requires all files to be tracked in git, something that's rather annoying as I don't see the need to keep my hardware configuration in GitHub. Secondly having everything declared by a single config file is perhaps exactly how it sounds. One stupendously large and messy file. I would like to split my files into different sections as well as not having my dotfiles parsed to nix. I therefore want a system where I also keep my dotfiles as dotfiles for ease of use and ease of transfer to another system if needed in the future. In addition to all this. NixOS does not have a nice way of handling custom scripts. I like building some scripts and systems myself and want to store them with my config files as one large bulk. 
 
-Gerhard's NixOS Management System or GNOMS for short is a system that does all this in a simple ellegant way. The setup is easily installed from GitHub. To install It's simply 3 lines on any NixOS system and you will have the exact same system as me. I also wanted to make it easy to custiize, so you only need to change one file to make it uniquely yours. In the future I also hope to make a custom installer ISO.
+Gerhard's NixOS Management System or GNOMS for short is a system that does all this in a simple elegant way. The setup is easily installed from GitHub. To install it's simply 3 lines on any NixOS system and you will have the exact same system as me. I also wanted to make it easy to customize, so you only need to change one file to make it uniquely yours. In the future I also hope to make a custom installer ISO.
 
 ## Architecture
 
 ![Image](/projects/gnoms/fish.png)
 
-The idea was to have one folder on my machine handeling everything. If this folder is tracked by git, then the whole system is saved and backed upp. This folder could be anywhere, but I placed it in the user home directory. This folder contains 4 sub folder all handelig some part of the system.
+The idea was to have one folder on my machine handling everything. If this folder is tracked by git, then the whole system is saved and backed up. This folder could be anywhere, but I placed it in the user home directory. This folder contains 4 sub folders all handling some part of the system.
 
 - **/dotfiles** : Everything rice and window manager specific.
 - **/nixos** : Everything NixOS specific, and the main script.
@@ -33,49 +33,46 @@ The idea was to have one folder on my machine handeling everything. If this fold
 
 ![Image](/projects/gnoms/nvim.png)
 
-This folder is exsactly as it sounds. Its where the dotfiles live. If you want to jump over to arch or any other distro, simply take this folder with you as you normally would. Allthough this is marketed as a manager system for NixOS, in reality half of the code and most of the time is spent on the awesomeWM config. I have a minimalistic setupp with some fun tweaks. The system preloads firefox onevery boot, meaning that opening firefox will always be lighting fast on any old laptop. I also added a scrap functionality where cloasing a window simply places it in scap to later be revivable with Super+z.
+This folder is exactly as it sounds. It's where the dotfiles live. If you want to jump over to Arch or any other distro, simply take this folder with you as you normally would. Although this is marketed as a manager system for NixOS, in reality half of the code and most of the time is spent on the AwesomeWM config. I have a minimalistic setup with some fun tweaks. The system preloads Firefox on every boot, meaning that opening Firefox will always be lightning fast on any old laptop. I also added a scrap functionality where closing a window simply places it in scrap to later be revivable with Super+z.
 
-You may find all keybindings in the config file itself, bur here are the most basic:
+You may find all keybindings in the config file itself, but here are the most basic:
 
 Super = Windows key
-
 "Super+Enter" -> opens terminal
 "Super+r" -> opens program finder (rofi)
-"Super+w" opens firefox
+"Super+w" opens Firefox
 "Super+num" move to that workspace
 
 ## nixos
 
 ![Image](/projects/gnoms/nixos.png)
 
-/nixos is the most important forlder by far. It handles all configuration for the sytem itself. This is where home.nix and configuration.nix lives. All configurations like videodrivers, bootloader, grub and such is configured here. If you want to tutch somthing its probably not the best place to start. It also contains the flake and flake.lock, meaning it handles the current exsact version of programs and the linux kernal. Hardware configuration is autogenerated by nix and is not saved here. It simply lives on your machine. I dont see any need to save it with the rest.
+/nixos is the most important folder by far. It handles all configuration for the system itself. This is where home.nix and configuration.nix lives. All configurations like video drivers, bootloader, grub and such is configured here. If you want to touch something it's probably not the best place to start. It also contains the flake and flake.lock, meaning it handles the current exact version of programs and the Linux kernel. Hardware configuration is autogenerated by nix and is not saved here. It simply lives on your machine. I don't see any need to save it with the rest.
 
 The system provides 4 functions in addition to keeping order.
-
 - **`reload`** : Syncs config files (dotfiles, scripts), restarts AwesomeWM if possible.
 - **`rebuild`** : Copies the .nix files to `/etc/nixos`, runs `nixos-rebuild switch`, then reloads.
 - **`update`** : Runs `nix flake update` to update all packages to the latest version.
 - **`upgrade`** : Combines `update` and `rebuild`.
 
-The script handeling this also lives in this folder. Reconfigure.sh is the main script of GNOMS. Few of files in the main GNOMS folder are themselvs directly responible for functionality. Most of them are copied to where they shuld be via this main script on reload. This also alows for placehoder values in the coniguration files that later get replaced with real values. This way I can handle things like programs, usernames, and emails in the personal folder.
+The script handling this also lives in this folder. Reconfigure.sh is the main script of GNOMS. Few of the files in the main GNOMS folder are themselves directly responsible for functionality. Most of them are copied to where they should be via this main script on reload. This also allows for placeholder values in the configuration files that later get replaced with real values. This way I can handle things like programs, usernames, and emails in the personal folder.
 
 ## Personal
 
 ![Image](/projects/gnoms/logo.png)
 
-The personal folder is made purely to divide the system more to my likling. I dont like having to enter the large configuration files for adding programs, and I would like to be able to quickly chnage my username without having to go thug al the files in the system. I also wanted to make a way for somone unfamiliar with the system to quickly make it their own. The idea was to make a persoal forler where everything unicly mine was to be saved. Wallpaper and logo also lives here. The profile.conf is easy to custimize and expand apoun.
+The personal folder is made purely to divide the system more to my liking. I don't like having to enter the large configuration files for adding programs, and I would like to be able to quickly change my username without having to go through all the files in the system. I also wanted to make a way for someone unfamiliar with the system to quickly make it their own. The idea was to make a personal folder where everything uniquely mine was to be saved. Wallpaper and logo also live here. The profile.conf is easy to customize and expand upon.
 
 ## Scripts
 
 ![Image](/projects/gnoms/scripts.png)
 
-The system also manages a variety of custom scripts. All of theese scripts live in the /scripts folder. This is the part of linux custimization i find really fun. Everything from volume handling and battery warning systems to montor detection systems and auto-detection of microcontrollers is custum built, and most of it works well. 
+The system also manages a variety of custom scripts. All of these scripts live in the /scripts folder. This is the part of Linux customization I find really fun. Everything from volume handling and battery warning systems to monitor detection systems and auto-detection of microcontrollers is custom built, and most of it works well. 
 
-One spesific system I spent a lot of time on is the mode switch system. I have often found laptops going into sleep when you dont want to or the fan noot working its hardest when needed or the other way around rahter annoying. I also made 3 modes for any computer running my system. Eather normal, server or performance. Typing `mode server` prevents sleep and allows incoming SSH sessions. `mode performance` changes CPU flags and uses the fan more aggressively. Although performance mode is rarely used, server mode has proved itself more useful than initially thought. I think the mode changing system works great and I have now simply used an older laptop as a homelabbing server with simply typing `mode server`.
+One specific system I spent a lot of time on is the mode switch system. I have often found laptops going into sleep when you don't want to or the fan not working its hardest when needed or the other way around rather annoying. I also made 3 modes for any computer running my system. Either normal, server or performance. Typing `mode server` prevents sleep and allows incoming SSH sessions. `mode performance` changes CPU flags and uses the fan more aggressively. Although performance mode is rarely used, server mode has proved itself more useful than initially thought. I think the mode changing system works great and I have now simply used an older laptop as a homelabbing server with simply typing `mode server`.
 
-Lastly I shuld quickly mention the eGPU capabillities of GNOMS. I have an NVIDIA eGPU that connect via thunderbolt to the laptop. It took some real work to get it working, but its now neatly incorperated in GNOMS. Nix allows for different profiles at boot so the setupp has one normal and one eGPU profile at boot. Simply choose the eGPU for any NVIDIA baced system. Adding some other eGPU shuld be smply by looking over how i incorperated NVIDIA. I also added scripts handling running programs with the eGPU when avalible. This way I am finnaly able to play Minecraft with shaders.
+Lastly I should quickly mention the eGPU capabilities of GNOMS. I have an NVIDIA eGPU that connects via Thunderbolt to the laptop. It took some real work to get it working, but it's now neatly incorporated in GNOMS. Nix allows for different profiles at boot so the setup has one normal and one eGPU profile at boot. Simply choose the eGPU for any NVIDIA based system. Adding some other eGPU should be simple by looking over how I incorporated NVIDIA. I also added scripts handling running programs with the eGPU when available. This way I am finally able to play Minecraft with shaders.
 
 ![Image](/projects/gnoms/github.png)
 
-Check out the system yourself at [GitHub/GNOMS](https://github.com/GerhardMe/GNOMS).
-
+Check out the system yourself at [GitHub/GNOMS](https://github.com/GerhardMe/GNOMS)!
