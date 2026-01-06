@@ -37,11 +37,11 @@ This folder is exactly as it sounds. It's where the dotfiles live. If you want t
 
 You may find all keybindings in the config file itself, but here are the most basic:
 
-Super = Windows key
-"Super+Enter" -> opens terminal
-"Super+r" -> opens program finder (rofi)
-"Super+w" opens Firefox
-"Super+num" move to that workspace
+(Super = Windows key)
+- **"Super+Enter"** -> opens terminal
+- **"Super+r"** -> opens program finder (rofi)
+- **"Super+w"** -> opens Firefox
+- **"Super+num"** -> move to that workspace
 
 ## nixos
 
