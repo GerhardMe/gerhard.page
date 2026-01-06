@@ -15,22 +15,23 @@ function fmtDate(d: string | Date) {
 
 const f = fm(post);
 
-// Get word count from the markdown body
+// Get word count and calculate reading time (average 200 words per minute)
 const body = post.rawContent?.() ?? post.body ?? "";
 const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
+const readingTime = Math.max(1, Math.round(wordCount / 200));
 ---
 
 <a href={post.url} class="item">
-  <div class="left">
+  <div class="imgBox">
     <img class="img" src={f.image} loading="lazy" />
-    <div class="info">
-      <div class="title">{f.title ?? post.slug ?? post.id}</div>
-      <div class="category">{f.category}</div>
-      <div class="words">{wordCount} words</div>
-    </div>
   </div>
-  <div class="right">
-    <div class="date">{fmtDate(f.date)}</div>
+  <div class="info">
+    <div class="widthBox">
+      <div class="title">{f.title ?? post.slug ?? post.id}</div>
+      <div class="date">{fmtDate(f.date)}</div>
+    </div>
+    <div class="category">{f.category}</div>
+    <div class="read">({readingTime} min read)</div>
   </div>
 </a>
 
@@ -39,27 +40,47 @@ const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
     display: flex;
     justify-content: space-between;
     padding: 0.5em;
+
+    overflow: hidden;
   }
 
   .item:hover .title {
     text-decoration: underline;
   }
 
-  .left {
-    display: flex;
-  }
-
-  .right {
+  .info {
     display: flex;
     flex-direction: column;
     padding-left: 0.5em;
     padding-right: 0.5em;
+
+    width: 100%;
+  }
+
+  .widthBox {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  @media (max-width: 500px) {
+    .widthBox {
+      flex-direction: column;
+    }
+
+    .date {
+      color: var(--color-text) !important;
+      transform: translateY(0);
+    }
   }
 
   .img {
-    min-height: 82px;
-    width: 150px;
-    border-radius: 0.2em;
+    width: 13em;
+    max-width: 43vw;
+    min-height: 4em;
+    height: auto;
+    object-fit: cover;
+
+    border-radius: 0.3em;
     background: var(--color-bg-dark);
     box-shadow: 0 0 0.2em var(--color-shadow);
   }
@@ -69,25 +90,20 @@ const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
     padding: -2px;
   }
 
-  .info {
-    display: flex;
-    flex-direction: column;
-    padding-left: 0.5em;
-    padding-right: 0.5em;
-  }
-
   .title {
     font-family: "Times New Roman", Times, serif;
     font-size: 1.1em;
     font-weight: bold;
     color: var(--color-accent);
+
+    margin-right: 1em;
   }
 
   .category {
     font-size: 0.9em;
   }
 
-  .words {
+  .read {
     font-size: 0.9em;
     color: var(--color-bg-dark);
   }
@@ -96,5 +112,7 @@ const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
     font-family: "Times New Roman", Times, serif;
     font-size: 0.9em;
     color: var(--color-bg-dark);
+
+    transform: translateY(0.25em);
   }
 </style>
