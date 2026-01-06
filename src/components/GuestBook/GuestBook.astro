@@ -1,0 +1,196 @@
+---
+
+---
+
+<div class="canvas-wrapper">
+  <canvas id="guestbook-canvas"></canvas>
+  <canvas id="drawing-canvas"></canvas>
+</div>
+
+<button id="submit-btn">Submit</button>
+<button id="clear-btn">Clear</button>
+<span id="status"></span>
+
+<style>
+  .canvas-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1.4142;
+  }
+
+  #guestbook-canvas,
+  #drawing-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #guestbook-canvas {
+    background: #fff;
+  }
+
+  #drawing-canvas {
+    cursor: crosshair;
+  }
+</style>
+
+<script>
+  const API_URL = "/api/guestbook";
+
+  // Fixed internal resolution (A4 ratio)
+  const CANVAS_WIDTH = 1240;
+  const CANVAS_HEIGHT = Math.round(1240 * 1.4142);
+
+  const guestbookCanvas = document.getElementById(
+    "guestbook-canvas"
+  ) as HTMLCanvasElement;
+  const drawingCanvas = document.getElementById(
+    "drawing-canvas"
+  ) as HTMLCanvasElement;
+  const submitBtn = document.getElementById("submit-btn")!;
+  const clearBtn = document.getElementById("clear-btn")!;
+  const statusEl = document.getElementById("status")!;
+
+  const guestbookCtx = guestbookCanvas.getContext("2d")!;
+  const drawingCtx = drawingCanvas.getContext("2d")!;
+
+  let isDrawing = false;
+
+  function initCanvases() {
+    guestbookCanvas.width = CANVAS_WIDTH;
+    guestbookCanvas.height = CANVAS_HEIGHT;
+
+    drawingCanvas.width = CANVAS_WIDTH;
+    drawingCanvas.height = CANVAS_HEIGHT;
+
+    loadGuestbook();
+  }
+
+  function getCanvasCoords(e: MouseEvent | Touch): { x: number; y: number } {
+    const rect = drawingCanvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+
+    const clientX = "clientX" in e ? e.clientX : e.clientX;
+    const clientY = "clientY" in e ? e.clientY : e.clientY;
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  }
+
+  async function loadGuestbook() {
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const blob = await response.blob();
+        const img = new Image();
+        img.onload = () => {
+          guestbookCtx.drawImage(
+            img,
+            0,
+            0,
+            guestbookCanvas.width,
+            guestbookCanvas.height
+          );
+        };
+        img.src = URL.createObjectURL(blob);
+      }
+    } catch (e) {
+      console.log("No existing guestbook yet");
+    }
+  }
+
+  // Drawing
+  drawingCanvas.addEventListener("mousedown", (e) => {
+    isDrawing = true;
+    const { x, y } = getCanvasCoords(e);
+    drawingCtx.beginPath();
+    drawingCtx.moveTo(x, y);
+  });
+
+  drawingCanvas.addEventListener("mousemove", (e) => {
+    if (!isDrawing) return;
+    const { x, y } = getCanvasCoords(e);
+    drawingCtx.lineWidth = 3;
+    drawingCtx.strokeStyle = "#000";
+    drawingCtx.lineCap = "round";
+    drawingCtx.lineTo(x, y);
+    drawingCtx.stroke();
+    drawingCtx.beginPath();
+    drawingCtx.moveTo(x, y);
+  });
+
+  drawingCanvas.addEventListener("mouseup", () => (isDrawing = false));
+  drawingCanvas.addEventListener("mouseleave", () => (isDrawing = false));
+
+  // Touch support
+  drawingCanvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    isDrawing = true;
+    const { x, y } = getCanvasCoords(e.touches[0]);
+    drawingCtx.beginPath();
+    drawingCtx.moveTo(x, y);
+  });
+
+  drawingCanvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const { x, y } = getCanvasCoords(e.touches[0]);
+    drawingCtx.lineWidth = 3;
+    drawingCtx.strokeStyle = "#000";
+    drawingCtx.lineCap = "round";
+    drawingCtx.lineTo(x, y);
+    drawingCtx.stroke();
+    drawingCtx.beginPath();
+    drawingCtx.moveTo(x, y);
+  });
+
+  drawingCanvas.addEventListener("touchend", () => (isDrawing = false));
+
+  // Double-click for text
+  drawingCanvas.addEventListener("dblclick", (e) => {
+    const text = prompt("Enter your text:");
+    if (text) {
+      const { x, y } = getCanvasCoords(e);
+      drawingCtx.font = "24px sans-serif";
+      drawingCtx.fillStyle = "#000";
+      drawingCtx.fillText(text, x, y);
+    }
+  });
+
+  // Clear drawing layer
+  clearBtn.addEventListener("click", () => {
+    drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+  });
+
+  // Submit
+  submitBtn.addEventListener("click", async () => {
+    statusEl.textContent = "Submitting...";
+
+    const imageData = drawingCanvas.toDataURL("image/png");
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageData }),
+      });
+
+      if (response.ok) {
+        statusEl.textContent = "Added!";
+        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        await loadGuestbook();
+      } else {
+        throw new Error("Server error");
+      }
+    } catch (e) {
+      statusEl.textContent = "Error submitting";
+    }
+  });
+
+  initCanvases();
+</script>

@@ -1,0 +1,28 @@
+---
+import Layout from "../layouts/main.astro";
+import Title from "../components/Title/Title.astro";
+import Navbar from "../components/Navbar/Navbar.astro";
+import GuestBook from "../components/GuestBook/GuestBook.astro";
+---
+
+<Layout>
+  <Navbar />
+  <main id="feed">
+    <Title title="Guestbook" icon="f02d" />
+    <GuestBook />
+  </main>
+</Layout>
+
+<style>
+  #feed {
+    position: relative;
+    margin: auto;
+    width: 124px;
+    padding-top: 4em;
+    padding-bottom: 7em;
+  }
+
+  p {
+    padding: 0 1em;
+  }
+</style>
