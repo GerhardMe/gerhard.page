@@ -1,6 +1,6 @@
 // Drawing state and logic
 
-import { addAction, state } from "./state.ts";
+import { addAction, state, DRAW_COLOR } from "./state.ts";
 
 let isDrawing = false;
 let brushSize = 3;
@@ -38,7 +38,7 @@ function startStroke(x: number, y: number) {
 function continueStroke(x: number, y: number) {
   currentStroke.push({ x, y });
   ctx.lineWidth = brushSize;
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = DRAW_COLOR;
   ctx.lineCap = "round";
   ctx.lineTo(x, y);
   ctx.stroke();
@@ -101,7 +101,7 @@ export function drawStroke(action: { points: { x: number; y: number }[]; brushSi
   if (action.points.length < 2) return;
   
   ctx.lineWidth = action.brushSize;
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = DRAW_COLOR;
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(action.points[0].x, action.points[0].y);

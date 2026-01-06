@@ -1,6 +1,6 @@
 // Textbox state and logic
 
-import { addAction } from "./state.ts";
+import { addAction, DRAW_COLOR } from "./state.ts";
 
 let activeTextbox: HTMLDivElement | null = null;
 let ctx: CanvasRenderingContext2D;
@@ -125,6 +125,7 @@ export function createTextbox(e: MouseEvent | Touch) {
     box-sizing: border-box;
     overflow: hidden;
     outline: none;
+    color: ${DRAW_COLOR};
   `;
   textarea.placeholder = "Type...";
   textarea.rows = 1;
@@ -260,7 +261,7 @@ export function confirmTextbox() {
 // Draw a text action (used for initial draw and undo/redo)
 export function drawTextAction(action: { text: string; x: number; y: number; width: number; fontSize: number }) {
   ctx.font = `${action.fontSize}px "Times New Roman", Times, serif`;
-  ctx.fillStyle = "#000";
+  ctx.fillStyle = DRAW_COLOR;
 
   const lineHeight = action.fontSize * 1.2;
   const lines = wrapText(action.text, action.width);

@@ -2,7 +2,7 @@
 
 // ========== CONFIGURABLE COLOR ==========
 // Change this to set the color for all drawing and text
-export const DRAW_COLOR = "#000000";
+export const DRAW_COLOR = "#222222";
 // ========================================
 
 export type StrokeAction = {
