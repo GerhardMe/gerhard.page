@@ -16,16 +16,25 @@ function fmtDate(d: string | Date) {
 const f = fm(post);
 ---
 
-<a href={post.url} class="text-item">
-  <span class="text-title">
-    {f.title ?? post.slug ?? post.id}
-    <span class="category">- {f.category}</span>
-  </span>
-  <span class="date">{fmtDate(f.date)}</span>
+<a href={post.url} class="item">
+  <div class="imgBox">
+    <span class="fancy">{(f.title ?? post.slug ?? post.id).charAt(0)}</span>
+  </div>
+  <div class="info">
+    <div class="widthBox">
+      <div class="title">{f.title ?? post.slug ?? post.id}</div>
+      <div class="date">{fmtDate(f.date)}</div>
+    </div>
+    <div class="category">{f.category}</div>
+    <div class="read">({readingTime} min read)</div>
+  </div>
 </a>
 
 <style>
-  .text-item {
+  .item {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 1.1em;
+
     display: flex;
     justify-content: space-between;
     padding: 0.5em;
@@ -38,7 +47,15 @@ const f = fm(post);
     }
   }
 
-  .text-item:hover {
+  .fancy {
+    font-size: 5em;
+    font-family: "Goudy Initialen";
+    line-height: 0.5em;
+
+    transform: translateY(-20em);
+  }
+
+  .item:hover {
     font-weight: bold;
   }
 

@@ -1,7 +1,7 @@
 ---
 import Layout from "../../layouts/default.astro";
 import List from "../../components/ObjList/ObjList.astro";
-import Text from "../../components/ObjList/Lists/Text.astro";
+import Article from "../../components/ObjList/Lists/Article.astro";
 import Title from "../../components/Title/Title.astro";
 const modules = import.meta.glob("./works/*.md", { eager: true });
 const media = Object.values(modules);
@@ -13,5 +13,5 @@ const media = Object.values(modules);
     about="This is where I keep my writings."
     icon="f040"
   />
-  <List media={media} groupBy={["date", "category"]} Item={Text} />
+  <List media={media} groupBy={["date", "category"]} Item={Article} />
 </Layout>

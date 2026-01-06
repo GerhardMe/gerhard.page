@@ -1,10 +1,8 @@
 ---
 const { post } = Astro.props;
-
 function fm(p: any) {
   return p.frontmatter ?? p.data ?? {};
 }
-
 function fmtDate(d: string | Date) {
   try {
     return new Date(d).toLocaleDateString("en-GB");
@@ -12,22 +10,30 @@ function fmtDate(d: string | Date) {
     return String(d ?? "");
   }
 }
-
 const f = fm(post);
-
 // Get word count and calculate reading time (average 200 words per minute)
 const body = post.rawContent?.() ?? post.body ?? "";
 const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
 const readingTime = Math.max(1, Math.round(wordCount / 200));
+
+const title = f.title ?? post.slug ?? post.id ?? "";
+const firstChar = title.charAt(0).toUpperCase();
+const hasImage = !!f.image;
 ---
 
 <a href={post.url} class="item">
   <div class="imgBox">
-    <img class="img" src={f.image} loading="lazy" />
+    {
+      hasImage ? (
+        <img class="img" src={f.image} loading="lazy" />
+      ) : (
+        <div class="initial">{firstChar}</div>
+      )
+    }
   </div>
   <div class="info">
     <div class="widthBox">
-      <div class="title">{f.title ?? post.slug ?? post.id}</div>
+      <div class="title">{title}</div>
       <div class="date">{fmtDate(f.date)}</div>
     </div>
     <div class="category">{f.category}</div>
@@ -96,6 +102,18 @@ const readingTime = Math.max(1, Math.round(wordCount / 200));
     box-shadow: 0 0 0.2em var(--color-shadow);
   }
 
+  .initial {
+    font-family: "Goudy Initialen";
+    font-size: 6em;
+    line-height: 0.8em;
+    color: var(--color-accent);
+  }
+
+  .item:hover .initial {
+    text-shadow: 0 0 0.05em var(--color-accent);
+    padding: 1px 0;
+  }
+
   .item:hover .img {
     border: 2px solid var(--color-accent);
     box-shadow: 0 0 0.2em var(--color-accent);
@@ -106,7 +124,6 @@ const readingTime = Math.max(1, Math.round(wordCount / 200));
     font-size: 1.1em;
     font-weight: bold;
     color: var(--color-accent);
-
     margin-right: 1em;
   }
 
@@ -123,7 +140,6 @@ const readingTime = Math.max(1, Math.round(wordCount / 200));
     font-family: "Times New Roman", Times, serif;
     font-size: 0.9em;
     color: var(--color-bg-dark);
-
     transform: translateY(0.25em);
   }
 </style>
