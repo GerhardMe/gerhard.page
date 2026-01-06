@@ -7,9 +7,13 @@
   <canvas id="drawing-canvas"></canvas>
 </div>
 
-<button id="submit-btn">Submit</button>
-<button id="clear-btn">Clear</button>
-<span id="status"></span>
+<div class="controls">
+  <button id="draw-mode" class="mode active">Draw</button>
+  <button id="text-mode" class="mode">Text</button>
+  <button id="clear-btn">Clear</button>
+  <button id="submit-btn">Submit</button>
+  <span id="status"></span>
+</div>
 
 <style>
   .canvas-wrapper {
@@ -34,6 +38,18 @@
   #drawing-canvas {
     cursor: crosshair;
   }
+
+  #drawing-canvas.text-mode {
+    cursor: text;
+  }
+
+  .controls {
+    margin-top: 1em;
+  }
+
+  .mode.active {
+    font-weight: bold;
+  }
 </style>
 
 <script>
@@ -52,11 +68,14 @@
   const submitBtn = document.getElementById("submit-btn")!;
   const clearBtn = document.getElementById("clear-btn")!;
   const statusEl = document.getElementById("status")!;
+  const drawModeBtn = document.getElementById("draw-mode")!;
+  const textModeBtn = document.getElementById("text-mode")!;
 
   const guestbookCtx = guestbookCanvas.getContext("2d")!;
   const drawingCtx = drawingCanvas.getContext("2d")!;
 
   let isDrawing = false;
+  let mode: "draw" | "text" = "draw";
 
   function initCanvases() {
     guestbookCanvas.width = CANVAS_WIDTH;
@@ -104,8 +123,33 @@
     }
   }
 
+  // Mode switching
+  drawModeBtn.addEventListener("click", () => {
+    mode = "draw";
+    drawModeBtn.classList.add("active");
+    textModeBtn.classList.remove("active");
+    drawingCanvas.classList.remove("text-mode");
+  });
+
+  textModeBtn.addEventListener("click", () => {
+    mode = "text";
+    textModeBtn.classList.add("active");
+    drawModeBtn.classList.remove("active");
+    drawingCanvas.classList.add("text-mode");
+  });
+
   // Drawing
   drawingCanvas.addEventListener("mousedown", (e) => {
+    if (mode === "text") {
+      const text = prompt("Enter your text:");
+      if (text) {
+        const { x, y } = getCanvasCoords(e);
+        drawingCtx.font = "24px sans-serif";
+        drawingCtx.fillStyle = "#000";
+        drawingCtx.fillText(text, x, y);
+      }
+      return;
+    }
     isDrawing = true;
     const { x, y } = getCanvasCoords(e);
     drawingCtx.beginPath();
@@ -113,7 +157,7 @@
   });
 
   drawingCanvas.addEventListener("mousemove", (e) => {
-    if (!isDrawing) return;
+    if (mode === "text" || !isDrawing) return;
     const { x, y } = getCanvasCoords(e);
     drawingCtx.lineWidth = 3;
     drawingCtx.strokeStyle = "#000";
@@ -130,6 +174,16 @@
   // Touch support
   drawingCanvas.addEventListener("touchstart", (e) => {
     e.preventDefault();
+    if (mode === "text") {
+      const text = prompt("Enter your text:");
+      if (text) {
+        const { x, y } = getCanvasCoords(e.touches[0]);
+        drawingCtx.font = "24px sans-serif";
+        drawingCtx.fillStyle = "#000";
+        drawingCtx.fillText(text, x, y);
+      }
+      return;
+    }
     isDrawing = true;
     const { x, y } = getCanvasCoords(e.touches[0]);
     drawingCtx.beginPath();
@@ -138,7 +192,7 @@
 
   drawingCanvas.addEventListener("touchmove", (e) => {
     e.preventDefault();
-    if (!isDrawing) return;
+    if (mode === "text" || !isDrawing) return;
     const { x, y } = getCanvasCoords(e.touches[0]);
     drawingCtx.lineWidth = 3;
     drawingCtx.strokeStyle = "#000";
@@ -150,17 +204,6 @@
   });
 
   drawingCanvas.addEventListener("touchend", () => (isDrawing = false));
-
-  // Double-click for text
-  drawingCanvas.addEventListener("dblclick", (e) => {
-    const text = prompt("Enter your text:");
-    if (text) {
-      const { x, y } = getCanvasCoords(e);
-      drawingCtx.font = "24px sans-serif";
-      drawingCtx.fillStyle = "#000";
-      drawingCtx.fillText(text, x, y);
-    }
-  });
 
   // Clear drawing layer
   clearBtn.addEventListener("click", () => {
