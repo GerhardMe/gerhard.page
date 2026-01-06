@@ -1,0 +1,163 @@
+---
+
+---
+
+<div class="controls">
+  <button id="draw-mode" class="mode active">Draw</button>
+  <button id="text-mode" class="mode">Text</button>
+  <div class="size-control">
+    <label>Brush:</label>
+    <button id="brush-down">-</button>
+    <span id="brush-value">3</span>
+    <button id="brush-up">+</button>
+  </div>
+  <div class="size-control">
+    <label>Font:</label>
+    <button id="font-down">-</button>
+    <span id="font-value">24</span>
+    <button id="font-up">+</button>
+  </div>
+  <button id="clear-btn">Clear</button>
+  <button id="submit-btn">Submit</button>
+  <span id="status"></span>
+</div>
+
+<style>
+  .controls {
+    margin-top: 1em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+  }
+
+  .mode.active {
+    font-weight: bold;
+  }
+
+  .size-control {
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+  }
+
+  .size-control button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .size-control span {
+    min-width: 24px;
+    text-align: center;
+  }
+</style>
+
+<script>
+  import {
+    state,
+    subscribe,
+    setMode,
+    setBrushSize,
+    setFontSize,
+  } from "./state";
+
+  const API_URL = "/api/guestbook";
+
+  const drawModeBtn = document.getElementById("draw-mode")!;
+  const textModeBtn = document.getElementById("text-mode")!;
+  const brushUpBtn = document.getElementById("brush-up")!;
+  const brushDownBtn = document.getElementById("brush-down")!;
+  const brushValueSpan = document.getElementById("brush-value")!;
+  const fontUpBtn = document.getElementById("font-up")!;
+  const fontDownBtn = document.getElementById("font-down")!;
+  const fontValueSpan = document.getElementById("font-value")!;
+  const clearBtn = document.getElementById("clear-btn")!;
+  const submitBtn = document.getElementById("submit-btn")!;
+  const statusEl = document.getElementById("status")!;
+
+  function updateUI() {
+    drawModeBtn.classList.toggle("active", state.mode === "draw");
+    textModeBtn.classList.toggle("active", state.mode === "text");
+    brushValueSpan.textContent = String(state.brushSize);
+    fontValueSpan.textContent = String(state.fontSize);
+  }
+
+  // React to state changes
+  subscribe(updateUI);
+
+  // Mode switching
+  drawModeBtn.addEventListener("click", () => {
+    const gb = (window as any).guestbook;
+    if (gb?.hasActiveTextbox()) {
+      gb.confirmTextbox();
+    }
+    setMode("draw");
+  });
+
+  textModeBtn.addEventListener("click", () => {
+    setMode("text");
+  });
+
+  // Brush size
+  brushUpBtn.addEventListener("click", () => {
+    setBrushSize(Math.min(state.brushSize + 1, 50));
+    setMode("draw");
+  });
+
+  brushDownBtn.addEventListener("click", () => {
+    setBrushSize(Math.max(state.brushSize - 1, 1));
+    setMode("draw");
+  });
+
+  // Font size
+  fontUpBtn.addEventListener("click", () => {
+    setFontSize(Math.min(state.fontSize + 2, 72));
+    setMode("text");
+  });
+
+  fontDownBtn.addEventListener("click", () => {
+    setFontSize(Math.max(state.fontSize - 2, 8));
+    setMode("text");
+  });
+
+  // Clear
+  clearBtn.addEventListener("click", () => {
+    const gb = (window as any).guestbook;
+    gb?.clearDrawing();
+  });
+
+  // Submit
+  submitBtn.addEventListener("click", async () => {
+    const gb = (window as any).guestbook;
+
+    if (gb?.hasActiveTextbox()) {
+      gb.confirmTextbox();
+    }
+
+    statusEl.textContent = "Submitting...";
+
+    const imageData = gb?.getImageData();
+
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageData }),
+      });
+
+      if (response.ok) {
+        statusEl.textContent = "Added!";
+        gb?.clearDrawing();
+        await gb?.loadGuestbook();
+      } else {
+        throw new Error("Server error");
+      }
+    } catch (e) {
+      statusEl.textContent = "Error submitting";
+    }
+  });
+
+  // Initialize UI
+  updateUI();
+</script>
