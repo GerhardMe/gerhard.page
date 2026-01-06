@@ -2,7 +2,7 @@
 
 ---
 
-<div class="canvas-wrapper">
+<div class="canvas-wrapper" id="canvas-wrapper">
   <canvas id="guestbook-canvas"></canvas>
   <canvas id="drawing-canvas"></canvas>
 </div>
@@ -10,6 +10,10 @@
 <div class="controls">
   <button id="draw-mode" class="mode active">Draw</button>
   <button id="text-mode" class="mode">Text</button>
+  <div class="brush-control">
+    <label>Brush: <span id="brush-value">3</span></label>
+    <input type="range" id="brush-size" min="1" max="20" value="3" />
+  </div>
   <button id="clear-btn">Clear</button>
   <button id="submit-btn">Submit</button>
   <span id="status"></span>
@@ -45,20 +49,37 @@
 
   .controls {
     margin-top: 1em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
   }
 
   .mode.active {
     font-weight: bold;
   }
+
+  .brush-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+  }
+
+  .brush-control input {
+    width: 80px;
+  }
 </style>
 
 <script>
+  import { initDrawing, setBrushSize, getBrushSize } from "./drawing";
+  import { initTextbox, createTextbox, hasActiveTextbox } from "./textbox";
+
   const API_URL = "/api/guestbook";
 
-  // Fixed internal resolution (A4 ratio)
   const CANVAS_WIDTH = 1240;
   const CANVAS_HEIGHT = Math.round(1240 * 1.4142);
 
+  const canvasWrapper = document.getElementById("canvas-wrapper")!;
   const guestbookCanvas = document.getElementById(
     "guestbook-canvas"
   ) as HTMLCanvasElement;
@@ -70,22 +91,16 @@
   const statusEl = document.getElementById("status")!;
   const drawModeBtn = document.getElementById("draw-mode")!;
   const textModeBtn = document.getElementById("text-mode")!;
+  const brushSizeInput = document.getElementById(
+    "brush-size"
+  ) as HTMLInputElement;
+  const brushValueSpan = document.getElementById("brush-value")!;
 
   const guestbookCtx = guestbookCanvas.getContext("2d")!;
   const drawingCtx = drawingCanvas.getContext("2d")!;
 
-  let isDrawing = false;
-  let mode: "draw" | "text" = "draw";
-
-  function initCanvases() {
-    guestbookCanvas.width = CANVAS_WIDTH;
-    guestbookCanvas.height = CANVAS_HEIGHT;
-
-    drawingCanvas.width = CANVAS_WIDTH;
-    drawingCanvas.height = CANVAS_HEIGHT;
-
-    loadGuestbook();
-  }
+  // Global mode state
+  (window as any).guestbookMode = "draw";
 
   function getCanvasCoords(e: MouseEvent | Touch): { x: number; y: number } {
     const rect = drawingCanvas.getBoundingClientRect();
@@ -99,6 +114,24 @@
       x: (clientX - rect.left) * scaleX,
       y: (clientY - rect.top) * scaleY,
     };
+  }
+
+  function initCanvases() {
+    guestbookCanvas.width = CANVAS_WIDTH;
+    guestbookCanvas.height = CANVAS_HEIGHT;
+    drawingCanvas.width = CANVAS_WIDTH;
+    drawingCanvas.height = CANVAS_HEIGHT;
+
+    initDrawing(drawingCanvas, drawingCtx, getCanvasCoords);
+    initTextbox(
+      canvasWrapper,
+      drawingCtx,
+      getCanvasCoords,
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT
+    );
+
+    loadGuestbook();
   }
 
   async function loadGuestbook() {
@@ -125,85 +158,32 @@
 
   // Mode switching
   drawModeBtn.addEventListener("click", () => {
-    mode = "draw";
+    (window as any).guestbookMode = "draw";
     drawModeBtn.classList.add("active");
     textModeBtn.classList.remove("active");
     drawingCanvas.classList.remove("text-mode");
   });
 
   textModeBtn.addEventListener("click", () => {
-    mode = "text";
+    (window as any).guestbookMode = "text";
     textModeBtn.classList.add("active");
     drawModeBtn.classList.remove("active");
     drawingCanvas.classList.add("text-mode");
   });
 
-  // Drawing
-  drawingCanvas.addEventListener("mousedown", (e) => {
-    if (mode === "text") {
-      const text = prompt("Enter your text:");
-      if (text) {
-        const { x, y } = getCanvasCoords(e);
-        drawingCtx.font = "24px sans-serif";
-        drawingCtx.fillStyle = "#000";
-        drawingCtx.fillText(text, x, y);
-      }
-      return;
+  // Brush size
+  brushSizeInput.addEventListener("input", () => {
+    const size = parseInt(brushSizeInput.value);
+    setBrushSize(size);
+    brushValueSpan.textContent = String(size);
+  });
+
+  // Text mode click handler
+  drawingCanvas.addEventListener("click", (e) => {
+    if ((window as any).guestbookMode === "text" && !hasActiveTextbox()) {
+      createTextbox(e);
     }
-    isDrawing = true;
-    const { x, y } = getCanvasCoords(e);
-    drawingCtx.beginPath();
-    drawingCtx.moveTo(x, y);
   });
-
-  drawingCanvas.addEventListener("mousemove", (e) => {
-    if (mode === "text" || !isDrawing) return;
-    const { x, y } = getCanvasCoords(e);
-    drawingCtx.lineWidth = 3;
-    drawingCtx.strokeStyle = "#000";
-    drawingCtx.lineCap = "round";
-    drawingCtx.lineTo(x, y);
-    drawingCtx.stroke();
-    drawingCtx.beginPath();
-    drawingCtx.moveTo(x, y);
-  });
-
-  drawingCanvas.addEventListener("mouseup", () => (isDrawing = false));
-  drawingCanvas.addEventListener("mouseleave", () => (isDrawing = false));
-
-  // Touch support
-  drawingCanvas.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    if (mode === "text") {
-      const text = prompt("Enter your text:");
-      if (text) {
-        const { x, y } = getCanvasCoords(e.touches[0]);
-        drawingCtx.font = "24px sans-serif";
-        drawingCtx.fillStyle = "#000";
-        drawingCtx.fillText(text, x, y);
-      }
-      return;
-    }
-    isDrawing = true;
-    const { x, y } = getCanvasCoords(e.touches[0]);
-    drawingCtx.beginPath();
-    drawingCtx.moveTo(x, y);
-  });
-
-  drawingCanvas.addEventListener("touchmove", (e) => {
-    e.preventDefault();
-    if (mode === "text" || !isDrawing) return;
-    const { x, y } = getCanvasCoords(e.touches[0]);
-    drawingCtx.lineWidth = 3;
-    drawingCtx.strokeStyle = "#000";
-    drawingCtx.lineCap = "round";
-    drawingCtx.lineTo(x, y);
-    drawingCtx.stroke();
-    drawingCtx.beginPath();
-    drawingCtx.moveTo(x, y);
-  });
-
-  drawingCanvas.addEventListener("touchend", () => (isDrawing = false));
 
   // Clear drawing layer
   clearBtn.addEventListener("click", () => {

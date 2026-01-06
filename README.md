@@ -3,9 +3,10 @@
 [gerhard.page](https://gerhard.page) is my personal webpage 💻!
 
 Built with:
+
 - Pnpm
 - Astro
 - PostCSS
-- Nix flake
+- TypeScript
 
 This page is both a love letter to the early internet ❤️, a functional portfolio 📂, and a personal blog ✍️.
