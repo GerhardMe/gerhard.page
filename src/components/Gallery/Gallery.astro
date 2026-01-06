@@ -1,385 +1,372 @@
 ---
 interface Props {
-    images?: any[];
-    maxSize?: number;
-    delayMs?: number;
-    rotationRange?: number;
+  images?: any[];
+  maxSize?: number;
+  delayMs?: number;
+  rotationRange?: number;
 }
 const {
-    images = [],
-    maxSize = 400,
-    delayMs = 300,
-    rotationRange = 30,
+  images = [],
+  maxSize = 400,
+  delayMs = 300,
+  rotationRange = 30,
 } = Astro.props;
 // randomize every render
 const shuffled = [...images].sort(() => Math.random() - 0.5);
 ---
 
 <div class="windowWidth">
-    <div
-        id="gallery"
-        data-max={maxSize}
-        data-delay={delayMs}
-        data-rot={rotationRange}
-    >
-        {
-            shuffled.map((u) => (
-                <img
-                    class="photo"
-                    src={u.src}
-                    alt="some image"
-                    decoding="async"
-                />
-            ))
-        }
-    </div>
+  <div
+    id="gallery"
+    data-max={maxSize}
+    data-delay={delayMs}
+    data-rot={rotationRange}
+  >
+    {
+      shuffled.map((u) => (
+        <img class="photo" src={u.src} alt="some image" decoding="async" />
+      ))
+    }
+  </div>
 </div>
 
 <style>
-    .windowWidth {
-        position: relative;
-        width: 100vw;
-        margin-left: calc(50% - 50vw);
-        overflow: hidden;
-        padding-top: 1000px;
-        margin-top: -1000px;
-    }
-    #gallery {
-        position: relative;
-        margin: auto;
-        width: 80%;
-        margin-bottom: 20em;
-    }
-    .photo {
-        position: absolute;
-        display: block;
-        transform-origin: 50% 50%;
-        user-select: none;
-        border-radius: 0.2em;
-        box-shadow: 0 0 8px var(--color-shadow);
-        /* start invisible + slightly shifted */
-        opacity: 0;
-        transform: translateY(40px);
-        transition:
-            opacity 0.6s ease,
-            transform 0.6s ease,
-            width 2s ease,
-            height 2s ease,
-            left 0.5s ease,
-            top 0.5s ease;
-    }
+  .windowWidth {
+    position: relative;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    overflow: hidden;
+    padding-top: 1000px;
+    margin-top: -1000px;
+  }
+  #gallery {
+    position: relative;
+    margin: auto;
+    width: 80%;
+    margin-bottom: 20em;
+  }
+  .photo {
+    position: absolute;
+    display: block;
+    transform-origin: 50% 50%;
+    user-select: none;
+    border-radius: 0.2em;
+    box-shadow: 0 0 8px var(--color-shadow);
+    /* start invisible + slightly shifted */
+    opacity: 0;
+    transform: translateY(40px);
+    transition:
+      opacity 0.6s ease,
+      transform 0.6s ease,
+      width 2s ease,
+      height 2s ease,
+      left 0.5s ease,
+      top 0.5s ease;
+  }
 </style>
 
 <script is:inline>
-    const container = document.getElementById("gallery");
-    if (!container) {
-        // nothing to do
-    } else {
-        const maxSize = Number(container.dataset.max || 360);
-        const delayMs = Number(container.dataset.delay || 100);
-        const rotRange = Number(container.dataset.rot || 30);
-        const margin = Number(container.dataset.margin || 20);
+  const container = document.getElementById("gallery");
+  if (!container) {
+    // nothing to do
+  } else {
+    const maxSize = Number(container.dataset.max || 360);
+    const delayMs = Number(container.dataset.delay || 100);
+    const rotRange = Number(container.dataset.rot || 30);
+    const margin = Number(container.dataset.margin || 20);
 
-        const imgs = Array.from(container.querySelectorAll("img"));
-        let placed = [];
-        let activeIndices = [];
-        let scanY = 0;
-        let scanDirection = 1; // 1 = left-to-right, -1 = right-to-left
-        let lastPlacedX = 0; // Track where last image was placed for snake continuity
-        let currentZoomed = null;
-        let initialLoadComplete = false;
-        let initialWidth = 0;
+    const imgs = Array.from(container.querySelectorAll("img"));
+    let placed = [];
+    let activeIndices = [];
+    let scanY = 0;
+    let scanDirection = 1; // 1 = left-to-right, -1 = right-to-left
+    let lastPlacedX = 0; // Track where last image was placed for snake continuity
+    let currentZoomed = null;
+    let initialLoadComplete = false;
+    let initialWidth = 0;
 
-        const scanStepX = 20;
-        const scanStepY = 10;
+    const scanStepX = 20;
+    const scanStepY = 10;
 
-        const rand = (min, max) => Math.random() * (max - min) + min;
+    const rand = (min, max) => Math.random() * (max - min) + min;
 
-        function getUnitW() {
-            const cw = container.clientWidth || 0;
-            if (cw < 600) return maxSize * 0.4;
-            if (cw < 900) return maxSize * 0.6;
-            if (cw < 1200) return maxSize * 0.8;
-            return maxSize;
-        }
-
-        function overlaps(a, b) {
-            return !(
-                a.x + a.w <= b.x ||
-                b.x + b.w <= a.x ||
-                a.y + a.h <= b.y ||
-                b.y + b.h <= a.y
-            );
-        }
-
-        function updateContainerHeight(bottom) {
-            container.style.height = Math.ceil(bottom) + "px";
-        }
-
-        function resetImg(img) {
-            const rot = Number(img.dataset.origRot || 0);
-            img.style.width = img.dataset.origW + "px";
-            img.style.height = img.dataset.origH + "px";
-            img.style.left = img.dataset.origLeft + "px";
-            img.style.top = img.dataset.origTop + "px";
-            img.style.transform = `rotate(${rot}deg)`;
-            img.style.zIndex = "0";
-            img.dataset.zoomed = "0";
-        }
-
-        function zoomImg(img) {
-            const vw =
-                window.innerWidth || document.documentElement.clientWidth || 0;
-            const vh =
-                window.innerHeight ||
-                document.documentElement.clientHeight ||
-                0;
-            const origW = Number(img.dataset.origW);
-            const origH = Number(img.dataset.origH);
-            const scale = Math.min(3, (vw * 0.9) / origW, (vh * 0.9) / origH);
-            const targetW = origW * scale;
-            const targetH = origH * scale;
-            img.style.width = targetW + "px";
-            img.style.height = targetH + "px";
-            img.style.left = `calc(50% - ${targetW / 2}px)`;
-            const scrollY = window.scrollY || 0;
-            const containerTop =
-                container.getBoundingClientRect().top + scrollY;
-            const centerTop = Math.max(
-                0,
-                scrollY + vh / 2 - targetH / 2 - containerTop,
-            );
-            img.style.top = centerTop + "px";
-            img.style.transform = "rotate(0deg)";
-            img.style.zIndex = "10";
-            img.dataset.zoomed = "1";
-        }
-
-        function onPhotoClick(e) {
-            const img = e.currentTarget;
-            if (!img.dataset.origW) return;
-            const isZoomed = img.dataset.zoomed === "1";
-            if (isZoomed) {
-                resetImg(img);
-                currentZoomed = null;
-            } else {
-                if (currentZoomed) resetImg(currentZoomed);
-                zoomImg(img);
-                currentZoomed = img;
-            }
-        }
-
-        function decodeOne(img) {
-            if (img.decode) return img.decode().catch(() => {});
-            if (img.complete) return Promise.resolve();
-            return new Promise((res) =>
-                img.addEventListener("load", res, { once: true }),
-            );
-        }
-
-        function placeImage(img) {
-            const usableW = container.clientWidth || 0;
-            const unitW = getUnitW();
-            const nw = img.naturalWidth || 1;
-            const nh = img.naturalHeight || 1;
-            let scale = Math.min(unitW / nw, unitW / nh, 1) * rand(0.9, 1.1);
-            const w = Math.round(nw * scale);
-            const h = Math.round(nh * scale);
-            const rot = rand(-rotRange, rotRange) || 3;
-
-            let foundX = 0;
-            let foundY = scanY;
-
-            outer: while (true) {
-                const y = foundY;
-
-                // remove images that are above our scan line (cleared)
-                activeIndices = activeIndices.filter((idx) => {
-                    const p = placed[idx];
-                    return p.y + p.h + margin > y;
-                });
-
-                // Determine scan range based on direction
-                let xStart, xEnd, xStep;
-                const imgIndex = placed.length;
-
-                if (scanDirection === 1) {
-                    // Left to right
-                    if (imgIndex === 0) {
-                        xStart = Math.floor((usableW - w) * 0.5); // 50% - center
-                    } else if (imgIndex === 1) {
-                        xStart = Math.floor((usableW - w) * 0.3); // 30% from left
-                    } else if (imgIndex === 2) {
-                        xStart = Math.floor((usableW - w) * 0.2); // 20% from left
-                    } else if (imgIndex === 3) {
-                        xStart = Math.floor((usableW - w) * 0.2); // 20% from left
-                    } else if (imgIndex === 4) {
-                        xStart = Math.floor((usableW - w) * 0.1); // 10% from left
-                    } else {
-                        xStart = Math.max(margin, lastPlacedX);
-                    }
-                    xEnd = usableW - w - margin;
-                    xStep = scanStepX;
-                } else {
-                    // Right to left: start from lastPlacedX or right edge
-                    xStart =
-                        imgIndex === 0
-                            ? usableW - w - margin
-                            : Math.min(usableW - w - margin, lastPlacedX);
-                    xEnd = margin;
-                    xStep = -scanStepX;
-                }
-
-                // Scan in current direction
-                for (
-                    let x = xStart;
-                    scanDirection === 1 ? x <= xEnd : x >= xEnd;
-                    x += xStep
-                ) {
-                    // candidate with margin for overlap check
-                    const cand = {
-                        x: x - margin,
-                        y: y - margin,
-                        w: w + margin * 2,
-                        h: h + margin * 2,
-                    };
-                    let blocked = false;
-                    for (const idx of activeIndices) {
-                        if (overlaps(cand, placed[idx])) {
-                            blocked = true;
-                            break;
-                        }
-                    }
-                    if (!blocked) {
-                        foundX = x;
-                        foundY = y;
-                        break outer;
-                    }
-                }
-
-                // Couldn't place on this row, move down and flip direction
-                foundY += scanStepY;
-                scanDirection *= -1;
-                // Reset lastPlacedX based on new direction
-                lastPlacedX =
-                    scanDirection === 1 ? margin : usableW - w - margin;
-            }
-
-            const left = Math.round(foundX);
-            const top = Math.round(foundY);
-
-            const newIdx = placed.length;
-            placed.push({ x: left, y: top, w, h });
-            activeIndices.push(newIdx);
-            scanY = top;
-            lastPlacedX = left + (scanDirection === 1 ? w : 0); // Track end position for snake continuity
-
-            img.dataset.origW = w;
-            img.dataset.origH = h;
-            img.dataset.origLeft = left;
-            img.dataset.origTop = top;
-            img.dataset.origRot = rot;
-            img.dataset.zoomed = "0";
-
-            img.style.width = w + "px";
-            img.style.height = h + "px";
-            img.style.left = left + "px";
-            img.style.top = top + "px";
-            img.style.transform = `translateY(40px) rotate(${rot}deg)`;
-
-            updateContainerHeight(top + h + margin);
-
-            requestAnimationFrame(() => {
-                img.style.opacity = "1";
-                img.style.transform = `rotate(${rot}deg)`;
-            });
-        }
-
-        let pendingImages = [];
-        let processing = false;
-
-        function queueImage(img) {
-            pendingImages.push(img);
-            processQueue();
-        }
-
-        function processQueue() {
-            if (processing || pendingImages.length === 0) return;
-            processing = true;
-            const img = pendingImages.shift();
-            placeImage(img);
-            setTimeout(() => {
-                processing = false;
-                if (
-                    pendingImages.length === 0 &&
-                    placed.length === imgs.length
-                ) {
-                    initialLoadComplete = true;
-                    initialWidth = container.clientWidth || 0;
-                }
-                processQueue();
-            }, delayMs);
-        }
-
-        function initialLoad() {
-            placed = [];
-            activeIndices = [];
-            scanY = 0;
-            scanDirection = 1;
-            lastPlacedX = 0;
-            pendingImages = [];
-            processing = false;
-            container.style.height = "0px";
-            for (const img of imgs) {
-                img.style.width = "";
-                img.style.height = "";
-                img.style.opacity = "0";
-                img.style.transform = "translateY(40px)";
-                delete img.dataset.origW;
-            }
-            for (const img of imgs) {
-                decodeOne(img).then(() => queueImage(img));
-            }
-        }
-
-        function relayout() {
-            if (currentZoomed) {
-                resetImg(currentZoomed);
-                currentZoomed = null;
-            }
-            placed = [];
-            activeIndices = [];
-            scanY = 0;
-            scanDirection = 1;
-            lastPlacedX = 0;
-            container.style.height = "0px";
-            for (const img of imgs) {
-                img.style.opacity = "0";
-                img.style.transform = "translateY(40px)";
-            }
-            for (const img of imgs) {
-                placeImage(img);
-            }
-        }
-
-        let resizeTimer = 0;
-        window.addEventListener(
-            "resize",
-            () => {
-                if (!initialLoadComplete) return;
-                const cw = container.clientWidth || 0;
-                if (Math.abs(cw - initialWidth) < 10) return;
-                initialWidth = cw;
-                clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(relayout, 150);
-            },
-            { passive: true },
-        );
-
-        for (const img of imgs) {
-            img.addEventListener("click", onPhotoClick);
-        }
-
-        initialLoad();
+    function getUnitW() {
+      const cw = container.clientWidth || 0;
+      if (cw < 600) return maxSize * 0.4;
+      if (cw < 900) return maxSize * 0.6;
+      if (cw < 1200) return maxSize * 0.8;
+      return maxSize;
     }
+
+    function overlaps(a, b) {
+      return !(
+        a.x + a.w <= b.x ||
+        b.x + b.w <= a.x ||
+        a.y + a.h <= b.y ||
+        b.y + b.h <= a.y
+      );
+    }
+
+    function updateContainerHeight(bottom) {
+      container.style.height = Math.ceil(bottom) + "px";
+    }
+
+    function resetImg(img) {
+      const rot = Number(img.dataset.origRot || 0);
+      img.style.width = img.dataset.origW + "px";
+      img.style.height = img.dataset.origH + "px";
+      img.style.left = img.dataset.origLeft + "px";
+      img.style.top = img.dataset.origTop + "px";
+      img.style.transform = `rotate(${rot}deg)`;
+      img.style.zIndex = "0";
+      img.dataset.zoomed = "0";
+    }
+
+    function zoomImg(img) {
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const vh =
+        window.innerHeight || document.documentElement.clientHeight || 0;
+      const origW = Number(img.dataset.origW);
+      const origH = Number(img.dataset.origH);
+      const scale = Math.min(3, (vw * 0.9) / origW, (vh * 0.9) / origH);
+      const targetW = origW * scale;
+      const targetH = origH * scale;
+      img.style.width = targetW + "px";
+      img.style.height = targetH + "px";
+      img.style.left = `calc(50% - ${targetW / 2}px)`;
+      const scrollY = window.scrollY || 0;
+      const containerTop = container.getBoundingClientRect().top + scrollY;
+      const centerTop = Math.max(
+        0,
+        scrollY + vh / 2 - targetH / 2 - containerTop
+      );
+      img.style.top = centerTop + "px";
+      img.style.transform = "rotate(0deg)";
+      img.style.zIndex = "10";
+      img.dataset.zoomed = "1";
+    }
+
+    function onPhotoClick(e) {
+      const img = e.currentTarget;
+      if (!img.dataset.origW) return;
+      const isZoomed = img.dataset.zoomed === "1";
+      if (isZoomed) {
+        resetImg(img);
+        currentZoomed = null;
+      } else {
+        if (currentZoomed) resetImg(currentZoomed);
+        zoomImg(img);
+        currentZoomed = img;
+      }
+    }
+
+    function decodeOne(img) {
+      if (img.decode) return img.decode().catch(() => {});
+      if (img.complete) return Promise.resolve();
+      return new Promise((res) =>
+        img.addEventListener("load", res, { once: true })
+      );
+    }
+
+    function placeImage(img) {
+      const usableW = container.clientWidth || 0;
+      const unitW = getUnitW();
+      const nw = img.naturalWidth || 1;
+      const nh = img.naturalHeight || 1;
+      let scale = Math.min(unitW / nw, unitW / nh, 1) * rand(0.9, 1.1);
+      const w = Math.round(nw * scale);
+      const h = Math.round(nh * scale);
+      const rot = rand(-rotRange, rotRange) || 3;
+
+      let foundX = 0;
+      let foundY = scanY;
+
+      outer: while (true) {
+        const y = foundY;
+
+        // remove images that are above our scan line (cleared)
+        activeIndices = activeIndices.filter((idx) => {
+          const p = placed[idx];
+          return p.y + p.h + margin > y;
+        });
+
+        // Determine scan range based on direction
+        let xStart, xEnd, xStep;
+        const imgIndex = placed.length;
+
+        if (scanDirection === 1) {
+          // Left to right
+          if (imgIndex === 0) {
+            xStart = Math.floor((usableW - w) * 0.5); // 50% - center
+          } else if (imgIndex === 1) {
+            xStart = Math.floor((usableW - w) * 0.3); // 30% from left
+          } else if (imgIndex === 2) {
+            xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+          } else if (imgIndex === 3) {
+            xStart = Math.floor((usableW - w) * 0.2); // 20% from left
+          } else if (imgIndex === 4) {
+            xStart = Math.floor((usableW - w) * 0.1); // 10% from left
+          } else {
+            xStart = Math.max(margin, lastPlacedX);
+          }
+          xEnd = usableW - w - margin;
+          xStep = scanStepX;
+        } else {
+          // Right to left: start from lastPlacedX or right edge
+          xStart =
+            imgIndex === 0
+              ? usableW - w - margin
+              : Math.min(usableW - w - margin, lastPlacedX);
+          xEnd = margin;
+          xStep = -scanStepX;
+        }
+
+        // Scan in current direction
+        for (
+          let x = xStart;
+          scanDirection === 1 ? x <= xEnd : x >= xEnd;
+          x += xStep
+        ) {
+          // candidate with margin for overlap check
+          const cand = {
+            x: x - margin,
+            y: y - margin,
+            w: w + margin * 2,
+            h: h + margin * 2,
+          };
+          let blocked = false;
+          for (const idx of activeIndices) {
+            if (overlaps(cand, placed[idx])) {
+              blocked = true;
+              break;
+            }
+          }
+          if (!blocked) {
+            foundX = x;
+            foundY = y;
+            break outer;
+          }
+        }
+
+        // Couldn't place on this row, move down and flip direction
+        foundY += scanStepY;
+        scanDirection *= -1;
+        // Reset lastPlacedX based on new direction
+        lastPlacedX = scanDirection === 1 ? margin : usableW - w - margin;
+      }
+
+      const left = Math.round(foundX);
+      const top = Math.round(foundY);
+
+      const newIdx = placed.length;
+      placed.push({ x: left, y: top, w, h });
+      activeIndices.push(newIdx);
+      scanY = top;
+      lastPlacedX = left + (scanDirection === 1 ? w : 0); // Track end position for snake continuity
+
+      img.dataset.origW = w;
+      img.dataset.origH = h;
+      img.dataset.origLeft = left;
+      img.dataset.origTop = top;
+      img.dataset.origRot = rot;
+      img.dataset.zoomed = "0";
+
+      img.style.width = w + "px";
+      img.style.height = h + "px";
+      img.style.left = left + "px";
+      img.style.top = top + "px";
+      img.style.transform = `translateY(40px) rotate(${rot}deg)`;
+
+      updateContainerHeight(top + h + margin);
+
+      requestAnimationFrame(() => {
+        img.style.opacity = "1";
+        img.style.transform = `rotate(${rot}deg)`;
+      });
+    }
+
+    let pendingImages = [];
+    let processing = false;
+
+    function queueImage(img) {
+      pendingImages.push(img);
+      processQueue();
+    }
+
+    function processQueue() {
+      if (processing || pendingImages.length === 0) return;
+      processing = true;
+      const img = pendingImages.shift();
+      placeImage(img);
+      setTimeout(() => {
+        processing = false;
+        if (pendingImages.length === 0 && placed.length === imgs.length) {
+          initialLoadComplete = true;
+          initialWidth = container.clientWidth || 0;
+        }
+        processQueue();
+      }, delayMs);
+    }
+
+    function initialLoad() {
+      placed = [];
+      activeIndices = [];
+      scanY = 0;
+      scanDirection = 1;
+      lastPlacedX = 0;
+      pendingImages = [];
+      processing = false;
+      container.style.height = "0px";
+      for (const img of imgs) {
+        img.style.width = "";
+        img.style.height = "";
+        img.style.opacity = "0";
+        img.style.transform = "translateY(40px)";
+        delete img.dataset.origW;
+      }
+      for (const img of imgs) {
+        decodeOne(img).then(() => queueImage(img));
+      }
+    }
+
+    function relayout() {
+      if (currentZoomed) {
+        resetImg(currentZoomed);
+        currentZoomed = null;
+      }
+      placed = [];
+      activeIndices = [];
+      scanY = 0;
+      scanDirection = 1;
+      lastPlacedX = 0;
+      container.style.height = "0px";
+      for (const img of imgs) {
+        img.style.opacity = "0";
+        img.style.transform = "translateY(40px)";
+      }
+      for (const img of imgs) {
+        placeImage(img);
+      }
+    }
+
+    let resizeTimer = 0;
+    window.addEventListener(
+      "resize",
+      () => {
+        if (!initialLoadComplete) return;
+        const cw = container.clientWidth || 0;
+        if (Math.abs(cw - initialWidth) < 10) return;
+        initialWidth = cw;
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(relayout, 150);
+      },
+      { passive: true }
+    );
+
+    for (const img of imgs) {
+      img.addEventListener("click", onPhotoClick);
+    }
+
+    initialLoad();
+  }
 </script>

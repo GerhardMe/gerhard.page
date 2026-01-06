@@ -13,21 +13,20 @@ function fmtDate(d: string | Date) {
   }
 }
 
-function stars(n: any) {
-  const v = Math.max(0, Math.min(5, Number(n) || 0));
-  return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
-}
-
 const f = fm(post);
+
+// Get word count from the markdown body
+const body = post.rawContent?.() ?? post.body ?? "";
+const wordCount = body.split(/\s+/).filter((w: string) => w.length > 0).length;
 ---
 
 <a href={post.url} class="item">
   <div class="left">
-    <img class="img" src={f.img} loading="lazy" />
+    <img class="img" src={f.image} loading="lazy" />
     <div class="info">
       <div class="title">{f.title ?? post.slug ?? post.id}</div>
       <div class="category">{f.category}</div>
-      <div class="words">words: {f.category}</div>
+      <div class="words">{wordCount} words</div>
     </div>
   </div>
   <div class="right">
@@ -60,8 +59,14 @@ const f = fm(post);
   .img {
     min-height: 82px;
     width: 150px;
-    border-radius: 1px;
-    background: var(--color-backdrop);
+    border-radius: 0.2em;
+    background: var(--color-bg-dark);
+    box-shadow: 0 0 0.2em var(--color-shadow);
+  }
+
+  .item:hover .img {
+    border: 2px solid var(--color-accent);
+    padding: -2px;
   }
 
   .info {
@@ -73,7 +78,6 @@ const f = fm(post);
 
   .title {
     font-family: "Times New Roman", Times, serif;
-
     font-size: 1.1em;
     font-weight: bold;
     color: var(--color-accent);
@@ -90,7 +94,6 @@ const f = fm(post);
 
   .date {
     font-family: "Times New Roman", Times, serif;
-
     font-size: 0.9em;
     color: var(--color-bg-dark);
   }
