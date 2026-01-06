@@ -6,7 +6,7 @@ category: code
 image: /projects/gnoms/neo.png
 ---
 
-Over the course of about a year I have slowly built a system for managing my NixOS Linux setup. This system was initially inspired by LARBS, but went on to become something different. I hope others might find it useful and get to explore NixOS in a more forgiving way. Perhaps it can be a stable platform for building your own setups from.
+Over the course of about a year I have slowly built a system for managing my NixOS Linux setup. This system was initially inspired by [LARBS](https://larbs.xyz/), but went on to become something different. I hope others might find it useful and get to explore NixOS in a more forgiving way. Perhaps it can be a stable platform for building your own setups from.
 
 [Link](https://github.com/GerhardMe/GNOMS) to project.
 
