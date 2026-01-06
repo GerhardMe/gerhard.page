@@ -37,15 +37,20 @@
 </style>
 
 <script>
-  import { initDrawing, setBrushSize as setDrawingBrushSize } from "./drawing";
+  import {
+    initDrawing,
+    setBrushSize as setDrawingBrushSize,
+    drawStroke,
+  } from "./drawing";
   import {
     initTextbox,
     createTextbox,
     hasActiveTextbox,
     confirmTextbox,
     setFontSize as setTextboxFontSize,
+    drawTextAction,
   } from "./textbox";
-  import { state, subscribe } from "./state";
+  import { state, subscribe, clearActions } from "./state";
 
   const API_URL = "/api/guestbook";
 
@@ -123,6 +128,18 @@
     }
   }
 
+  // Redraw all actions (used after undo)
+  function redrawActions() {
+    drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+    for (const action of state.actions) {
+      if (action.type === "stroke") {
+        drawStroke(action);
+      } else if (action.type === "text") {
+        drawTextAction(action);
+      }
+    }
+  }
+
   // React to state changes
   subscribe(() => {
     drawingCanvas.classList.toggle("text-mode", state.mode === "text");
@@ -144,11 +161,14 @@
   // Expose functions for controls
   (window as any).guestbook = {
     loadGuestbook,
-    clearDrawing: () =>
-      drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height),
+    clearDrawing: () => {
+      drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+      clearActions();
+    },
     getImageData: () => drawingCanvas.toDataURL("image/png"),
     confirmTextbox,
     hasActiveTextbox,
+    redrawActions,
   };
 
   initCanvases();

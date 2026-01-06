@@ -1,5 +1,27 @@
 // Shared state between guestbook components
 
+// ========== CONFIGURABLE COLOR ==========
+// Change this to set the color for all drawing and text
+export const DRAW_COLOR = "#000000";
+// ========================================
+
+export type StrokeAction = {
+  type: "stroke";
+  points: { x: number; y: number }[];
+  brushSize: number;
+};
+
+export type TextAction = {
+  type: "text";
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+};
+
+export type Action = StrokeAction | TextAction;
+
 export const state = {
   mode: "draw" as "draw" | "text",
   brushSize: 3,
@@ -8,6 +30,7 @@ export const state = {
   guestbookCtx: null as CanvasRenderingContext2D | null,
   canvasWidth: 1240,
   canvasHeight: Math.round(1240 * 1.4142),
+  actions: [] as Action[],
 };
 
 type Listener = () => void;
@@ -38,5 +61,21 @@ export function setBrushSize(size: number) {
 
 export function setFontSize(size: number) {
   state.fontSize = size;
+  notify();
+}
+
+export function addAction(action: Action) {
+  state.actions.push(action);
+  notify();
+}
+
+export function undo(): Action | undefined {
+  const action = state.actions.pop();
+  notify();
+  return action;
+}
+
+export function clearActions() {
+  state.actions = [];
   notify();
 }

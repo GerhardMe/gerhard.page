@@ -1,5 +1,7 @@
 // Textbox state and logic
 
+import { addAction } from "./state.ts";
+
 let activeTextbox: HTMLDivElement | null = null;
 let ctx: CanvasRenderingContext2D;
 let canvasWrapper: HTMLElement;
@@ -239,18 +241,33 @@ export function confirmTextbox() {
   const y = (boxRect.top - wrapperRect.top) * scaleY + paddingTop;
   const width = (boxRect.width - 16) * scaleX - (paddingLeft * 2); // -16 for both brackets
 
-  // fontSize is already in canvas pixels
-  ctx.font = `${fontSize}px "Times New Roman", Times, serif`;
-  ctx.fillStyle = "#000";
-
-  const lineHeight = fontSize * 1.2;
-
-  const lines = wrapText(text, width);
-  lines.forEach((line, i) => {
-    ctx.fillText(line, x, y + fontSize + (i * lineHeight));
+  // Add action for undo
+  addAction({
+    type: "text",
+    text,
+    x,
+    y,
+    width,
+    fontSize,
   });
 
+  // Draw the text
+  drawTextAction({ text, x, y, width, fontSize });
+
   removeTextbox();
+}
+
+// Draw a text action (used for initial draw and undo/redo)
+export function drawTextAction(action: { text: string; x: number; y: number; width: number; fontSize: number }) {
+  ctx.font = `${action.fontSize}px "Times New Roman", Times, serif`;
+  ctx.fillStyle = "#000";
+
+  const lineHeight = action.fontSize * 1.2;
+  const lines = wrapText(action.text, action.width);
+  
+  lines.forEach((line, i) => {
+    ctx.fillText(line, action.x, action.y + action.fontSize + (i * lineHeight));
+  });
 }
 
 function wrapText(text: string, maxWidth: number): string[] {

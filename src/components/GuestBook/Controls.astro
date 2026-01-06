@@ -17,6 +17,7 @@
     <span id="font-value">24</span>
     <button id="font-up">+</button>
   </div>
+  <button id="undo-btn">Undo</button>
   <button id="clear-btn">Clear</button>
   <button id="submit-btn">Submit</button>
   <span id="status"></span>
@@ -60,6 +61,7 @@
     setMode,
     setBrushSize,
     setFontSize,
+    undo,
   } from "./state";
 
   const API_URL = "/api/guestbook";
@@ -72,6 +74,7 @@
   const fontUpBtn = document.getElementById("font-up")!;
   const fontDownBtn = document.getElementById("font-down")!;
   const fontValueSpan = document.getElementById("font-value")!;
+  const undoBtn = document.getElementById("undo-btn")!;
   const clearBtn = document.getElementById("clear-btn")!;
   const submitBtn = document.getElementById("submit-btn")!;
   const statusEl = document.getElementById("status")!;
@@ -119,6 +122,15 @@
   fontDownBtn.addEventListener("click", () => {
     setFontSize(Math.max(state.fontSize - 2, 8));
     setMode("text");
+  });
+
+  // Undo
+  undoBtn.addEventListener("click", () => {
+    const action = undo();
+    if (action) {
+      const gb = (window as any).guestbook;
+      gb?.redrawActions();
+    }
   });
 
   // Clear
