@@ -73,6 +73,17 @@ const readingTime = Math.max(1, Math.round(wordCount / 200));
     }
   }
 
+  .imgBox {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    padding: 1px 0;
+  }
+
+  .item:hover .imgBox {
+    padding: 0;
+  }
+
   .img {
     width: 13em;
     max-width: 43vw;
@@ -85,17 +96,9 @@ const readingTime = Math.max(1, Math.round(wordCount / 200));
     box-shadow: 0 0 0.2em var(--color-shadow);
   }
 
-  .imgBox {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-  }
-
   .item:hover .img {
     border: 2px solid var(--color-accent);
     box-shadow: 0 0 0.2em var(--color-accent);
-
-    padding: -2px;
   }
 
   .title {
