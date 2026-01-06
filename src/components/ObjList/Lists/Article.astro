@@ -1,0 +1,97 @@
+---
+const { post } = Astro.props;
+
+function fm(p: any) {
+  return p.frontmatter ?? p.data ?? {};
+}
+
+function fmtDate(d: string | Date) {
+  try {
+    return new Date(d).toLocaleDateString("en-GB");
+  } catch {
+    return String(d ?? "");
+  }
+}
+
+function stars(n: any) {
+  const v = Math.max(0, Math.min(5, Number(n) || 0));
+  return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
+}
+
+const f = fm(post);
+---
+
+<a href={post.url} class="item">
+  <div class="left">
+    <img class="img" src={f.img} loading="lazy" />
+    <div class="info">
+      <div class="title">{f.title ?? post.slug ?? post.id}</div>
+      <div class="category">{f.category}</div>
+      <div class="words">words: {f.category}</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="date">{fmtDate(f.date)}</div>
+  </div>
+</a>
+
+<style>
+  .item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5em;
+  }
+
+  .item:hover .title {
+    text-decoration: underline;
+  }
+
+  .left {
+    display: flex;
+  }
+
+  .right {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+  }
+
+  .img {
+    min-height: 82px;
+    width: 150px;
+    border-radius: 1px;
+    background: var(--color-backdrop);
+  }
+
+  .info {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+  }
+
+  .title {
+    font-family: "Times New Roman", Times, serif;
+
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--color-accent);
+  }
+
+  .category {
+    font-size: 0.9em;
+  }
+
+  .words {
+    font-size: 0.9em;
+    color: var(--color-bg-dark);
+  }
+
+  .date {
+    font-family: "Times New Roman", Times, serif;
+
+    font-size: 0.9em;
+    color: var(--color-bg-dark);
+  }
+</style>
