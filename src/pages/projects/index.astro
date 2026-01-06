@@ -1,7 +1,7 @@
 ---
 import Layout from "../../layouts/default.astro";
-import IndexList from "../../components/IndexList/Groups.astro";
-import List from "../../components/IndexList/Lists/Texts.astro";
+import List from "../../components/ObjList/ObjList.astro";
+import Text from "../../components/ObjList/Lists/Text.astro";
 import Title from "../../components/Title/Title.astro";
 const modules = import.meta.glob("./proj/*.md", { eager: true });
 const media = Object.values(modules);
@@ -13,5 +13,5 @@ const media = Object.values(modules);
     about="Here you can read about some of my projects."
     icon="f0eb"
   />
-  <IndexList media={media} groupBy={["date", "category"]} List={List} />
+  <List media={media} groupBy={["date", "category"]} Item={Text} />
 </Layout>

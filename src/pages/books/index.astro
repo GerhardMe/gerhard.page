@@ -1,7 +1,7 @@
 ---
 import Layout from "../../layouts/default.astro";
-import IndexList from "../../components/IndexList/Groups.astro";
-import List from "../../components/IndexList/Lists/Books.astro";
+import List from "../../components/ObjList/ObjList.astro";
+import Book from "../../components/ObjList/Lists/Book.astro";
 import Title from "../../components/Title/Title.astro";
 const modules = import.meta.glob("./list/*.md", { eager: true });
 const media = Object.values(modules);
@@ -21,10 +21,10 @@ const media = Object.values(modules);
       type="text/javascript"
       src="https://isak.me/onionring/onionring-widget.js"></script>
   </div>
-  <IndexList
+  <List
     media={media}
     groupBy={["read", "author", "rating", "year"]}
     favorites={true}
-    List={List}
+    Item={Book}
   />
 </Layout>

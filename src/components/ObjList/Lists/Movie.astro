@@ -1,0 +1,91 @@
+---
+const { post } = Astro.props;
+
+function fm(p: any) {
+    return p.frontmatter ?? p.data ?? {};
+}
+
+function stars(n: any) {
+    const v = Math.max(0, Math.min(5, Number(n) || 0));
+    return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
+}
+
+const f = fm(post);
+---
+
+<a class="movie-item">
+    <img class="cover" src={f.img} loading="lazy" />
+    <div class="about">
+        <div class="top">
+            <p class="movie-title">
+                {f.title}
+                <span class="year">({f.year})</span>
+            </p>
+            <p class="director">{f.director}</p>
+            <p class="genre">
+                {f.genre}
+                <span class="type">{f.type}</span>
+            </p>
+            {f.warning && <p class="warning">{f.warning}</p>}
+        </div>
+        <p class="rating">{stars(f.rating)}</p>
+    </div>
+</a>
+
+<style>
+    .movie-item {
+        display: flex;
+        padding: 0.5em;
+    }
+
+    .cover {
+        height: 8em;
+        min-width: 5em;
+        border-radius: 1px;
+        background: var(--color-backdrop);
+    }
+
+    .about {
+        padding-left: 0.5em;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .top p {
+        padding-bottom: 0.2em;
+    }
+
+    .movie-title {
+        font-weight: bold;
+        color: var(--color-accent);
+    }
+
+    .year {
+        color: var(--color-bg-dark);
+        font-weight: normal;
+    }
+
+    .director {
+        font-size: 0.9em;
+        color: var(--color-bg-dark);
+    }
+
+    .genre {
+        color: var(--color-bg-dark);
+        font-size: 0.9em;
+    }
+
+    .type {
+        font-weight: bold;
+    }
+
+    .warning {
+        color: var(--color-error);
+    }
+
+    .rating {
+        color: var(--color-gold);
+        text-shadow: 0 0 0.1em var(--color-shadow);
+    }
+</style>

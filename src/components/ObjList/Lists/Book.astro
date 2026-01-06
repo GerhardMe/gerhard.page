@@ -1,0 +1,100 @@
+---
+const { post } = Astro.props;
+
+function fm(p: any) {
+    return p.frontmatter ?? p.data ?? {};
+}
+
+function fmtDate(d: string | Date) {
+    try {
+        return new Date(d).toLocaleDateString("en-GB");
+    } catch {
+        return String(d ?? "");
+    }
+}
+
+function stars(n: any) {
+    const v = Math.max(0, Math.min(5, Number(n) || 0));
+    return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
+}
+
+const f = fm(post);
+---
+
+<a href={post.url} class="book-item">
+    <div class="left">
+        <img class="cover" src={f.img} loading="lazy" />
+        <div class="info">
+            <div class="book-title">{f.title ?? post.slug ?? post.id}</div>
+            <div class="author">by {f.author}</div>
+            <div class="year">({f.year})</div>
+        </div>
+    </div>
+    <div class="right">
+        <div class="read">read: {fmtDate(f.read)}</div>
+        <div class="rating">{stars(f.rating)}</div>
+    </div>
+</a>
+
+<style>
+    .book-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5em;
+    }
+
+    .book-item:hover .book-title {
+        text-decoration: underline;
+    }
+
+    .left {
+        display: flex;
+    }
+
+    .right {
+        display: flex;
+        flex-direction: column;
+        padding-left: 0.5em;
+        padding-right: 0.5em;
+    }
+
+    .cover {
+        min-height: 82px;
+        width: 60px;
+        border-radius: 1px;
+        background: var(--color-backdrop);
+    }
+
+    .info {
+        display: flex;
+        flex-direction: column;
+        padding-left: 0.5em;
+        padding-right: 0.5em;
+    }
+
+    .book-title {
+        font-weight: bold;
+        color: var(--color-accent);
+    }
+
+    .author {
+        font-size: 0.9em;
+        color: var(--color-bg-dark);
+    }
+
+    .year {
+        font-size: 0.9em;
+        color: var(--color-bg-dark);
+    }
+
+    .read {
+        font-size: 0.9em;
+        color: var(--color-bg-dark);
+    }
+
+    .rating {
+        color: var(--color-gold);
+        text-shadow: 0 0 0.1em var(--color-shadow);
+        text-align: right;
+    }
+</style>

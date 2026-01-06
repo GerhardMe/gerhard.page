@@ -1,20 +1,14 @@
 ---
-import DefaultList from "./Lists/Books.astro";
 import GroupButtons from "./GroupsBtn.astro";
 
-interface __Props__ {
+interface Props {
     media: any[];
     groupBy?: string[];
     favorites?: boolean;
-    List?: any;
+    Item: any; // Component that renders a single item
 }
 
-const {
-    media,
-    groupBy = ["read"],
-    favorites = false,
-    List = DefaultList,
-} = Astro.props;
+const { media, groupBy = ["read"], favorites = false, Item } = Astro.props;
 
 function fm(post: any) {
     return post.frontmatter ?? post.data ?? {};
@@ -22,11 +16,8 @@ function fm(post: any) {
 
 function isDateValue(val: any) {
     if (val == null || val === "") return false;
-    // Numbers alone shouldn't count as dates (years, ratings, etc.)
     if (typeof val === "number") return false;
-    // Must be a string that looks like a date
     if (typeof val !== "string") return false;
-    // Reject short strings (like "4" or "1957")
     if (val.length < 6) return false;
     const d = new Date(val);
     return !isNaN(d.getTime());
@@ -60,7 +51,6 @@ function buildBuckets(key: string) {
         buckets.get(k)!.push(post);
     }
 
-    // sort posts inside each bucket by first date key, or keep original order
     const sortKey = dateKeys[0];
     if (sortKey) {
         for (const [, arr] of buckets) {
@@ -90,20 +80,26 @@ const prebuilt = bucketKeys.map((k) => ({ key: k, ...buildBuckets(k) }));
 
 const favoritesList = favorites ? media.filter((p) => !!fm(p).favorite) : [];
 
-// Figure out which key/order shows first
 const firstKey = groupBy[0];
-const firstIsDate = dateKeys.includes(firstKey);
 ---
 
+{/* Favorites section */}
 {
     favorites && favoritesList.length > 0 && (
-        <List posts={favoritesList} title="My all time favorites:" />
+        <ul class="list">
+            <h3 class="title">My all time favorites:</h3>
+            {favoritesList.map((post: any) => (
+                <li class="element">
+                    <Item post={post} />
+                </li>
+            ))}
+        </ul>
     )
 }
 
 <GroupButtons keys={groupBy} />
 
-<!-- Date-based keys -->
+{/* Date-based keys */}
 {
     dateKeys.map((key) => {
         const isFirst = key === firstKey;
@@ -113,16 +109,28 @@ const firstIsDate = dateKeys.includes(firstKey);
                 data-key={key}
                 data-order="desc"
             >
-                <List posts={dateSections[key].desc} />
+                <ul class="list">
+                    {dateSections[key].desc.map((post: any) => (
+                        <li class="element">
+                            <Item post={post} />
+                        </li>
+                    ))}
+                </ul>
             </section>,
             <section class="groupset hidden" data-key={key} data-order="asc">
-                <List posts={dateSections[key].asc} />
+                <ul class="list">
+                    {dateSections[key].asc.map((post: any) => (
+                        <li class="element">
+                            <Item post={post} />
+                        </li>
+                    ))}
+                </ul>
             </section>,
         ];
     })
 }
 
-<!-- Bucketed keys -->
+{/* Bucketed keys */}
 {
     prebuilt.flatMap(({ key, groupsDesc, buckets }) => {
         const isFirst = key === firstKey;
@@ -135,14 +143,32 @@ const firstIsDate = dateKeys.includes(firstKey);
                 {groupsDesc.map((g) => {
                     const list = buckets.get(g) ?? [];
                     if (list.length === 0) return null;
-                    return <List posts={list} title={g} />;
+                    return (
+                        <ul class="list">
+                            <h3 class="title">{g}</h3>
+                            {list.map((post: any) => (
+                                <li class="element">
+                                    <Item post={post} />
+                                </li>
+                            ))}
+                        </ul>
+                    );
                 })}
             </section>,
             <section class="groupset hidden" data-key={key} data-order="asc">
                 {[...groupsDesc].reverse().map((g) => {
-                    const listDesc = buckets.get(g) ?? [];
-                    if (listDesc.length === 0) return null;
-                    return <List posts={listDesc} title={g} />;
+                    const list = buckets.get(g) ?? [];
+                    if (list.length === 0) return null;
+                    return (
+                        <ul class="list">
+                            <h3 class="title">{g}</h3>
+                            {list.map((post: any) => (
+                                <li class="element">
+                                    <Item post={post} />
+                                </li>
+                            ))}
+                        </ul>
+                    );
                 })}
             </section>,
         ];
@@ -152,6 +178,23 @@ const firstIsDate = dateKeys.includes(firstKey);
 <style>
     .hidden {
         display: none;
+    }
+
+    .list {
+        margin: 0em 0.5em 5em 0.5em;
+    }
+
+    .title {
+        border-bottom: 1px solid var(--color-backdrop);
+        padding-bottom: 0.5em;
+    }
+
+    .element {
+        border-bottom: 1px solid var(--color-backdrop);
+    }
+
+    .element:last-child {
+        border-bottom: none;
     }
 </style>
 
