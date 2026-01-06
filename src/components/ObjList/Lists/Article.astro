@@ -32,10 +32,19 @@ const hasImage = !!f.image;
     }
   </div>
   <div class="info">
-    <div class="widthBox">
-      <div class="title">{title}</div>
-      <div class="date">{fmtDate(f.date)}</div>
-    </div>
+    {
+      hasImage ? (
+        <div class="widthBox wide">
+          <div class="title">{title}</div>
+          <div class="date">{fmtDate(f.date)}</div>
+        </div>
+      ) : (
+        <div class="widthBox">
+          <div class="title">{title}</div>
+          <div class="date">{fmtDate(f.date)}</div>
+        </div>
+      )
+    }
     <div class="category">{f.category}</div>
     <div class="read">({readingTime} min read)</div>
   </div>
@@ -69,13 +78,24 @@ const hasImage = !!f.image;
   }
 
   @media (max-width: 500px) {
+    .wide {
+      flex-direction: column;
+
+      .date {
+        color: var(--color-text) !important;
+        transform: translateY(0);
+      }
+    }
+  }
+
+  @media (max-width: 370px) {
     .widthBox {
       flex-direction: column;
-    }
 
-    .date {
-      color: var(--color-text) !important;
-      transform: translateY(0);
+      .date {
+        color: var(--color-text) !important;
+        transform: translateY(0);
+      }
     }
   }
 
