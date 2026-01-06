@@ -25,13 +25,15 @@ const show = keys.length > 1;
                 ))}
             </div>
         </div>
+        <div class="line"></div>
     )
 }
 
 <style>
     .container {
-        padding: 0em 3em 2em 3em;
+        padding: 0em 0.5em;
         display: flex;
+        flex-wrap: wrap;
         justify-content: center;
 
         .titleBox {
@@ -39,20 +41,25 @@ const show = keys.length > 1;
             flex-direction: column;
             justify-content: center;
             .title {
+                font-family: 'Times New Roman', Times, serif;
+
                 font-weight: bold;
                 text-wrap: nowrap;
+
+                font-size: 1.25em;
+
+                transform: translateY(-0.15em);
             }
         }
 
-        .element {
-            display: inline;
-            padding-right: 1em;
-            font-size: 1.2em;
-        }
         .groupby-btn {
             color: var(--color-accent);
             cursor: pointer;
             user-select: none;
+
+            padding-left: 0.5em;
+            font-size: 1.1em;
+
         }
         .groupby-btn.active {
             font-weight: bold;
@@ -60,6 +67,11 @@ const show = keys.length > 1;
         .groupby-btn:hover {
             text-decoration: underline;
         }
+    }
+
+    .line{
+        margin: 1.2em 7em;
+        border-bottom: 1px dashed var(--color-bg-dark);
     }
 </style>
 
