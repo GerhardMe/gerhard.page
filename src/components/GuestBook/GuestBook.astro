@@ -10,9 +10,17 @@
 <div class="controls">
   <button id="draw-mode" class="mode active">Draw</button>
   <button id="text-mode" class="mode">Text</button>
-  <div class="brush-control">
-    <label>Brush: <span id="brush-value">3</span></label>
-    <input type="range" id="brush-size" min="1" max="20" value="3" />
+  <div class="size-control">
+    <label>Brush:</label>
+    <button id="brush-down">-</button>
+    <span id="brush-value">3</span>
+    <button id="brush-up">+</button>
+  </div>
+  <div class="size-control">
+    <label>Font:</label>
+    <button id="font-down">-</button>
+    <span id="font-value">24</span>
+    <button id="font-up">+</button>
   </div>
   <button id="clear-btn">Clear</button>
   <button id="submit-btn">Submit</button>
@@ -59,20 +67,34 @@
     font-weight: bold;
   }
 
-  .brush-control {
+  .size-control {
     display: flex;
     align-items: center;
-    gap: 0.5em;
+    gap: 0.3em;
   }
 
-  .brush-control input {
-    width: 80px;
+  .size-control button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .size-control span {
+    min-width: 24px;
+    text-align: center;
   }
 </style>
 
 <script>
   import { initDrawing, setBrushSize, getBrushSize } from "./drawing";
-  import { initTextbox, createTextbox, hasActiveTextbox } from "./textbox";
+  import {
+    initTextbox,
+    createTextbox,
+    hasActiveTextbox,
+    confirmTextbox,
+    setFontSize,
+    getFontSize,
+  } from "./textbox";
 
   const API_URL = "/api/guestbook";
 
@@ -91,16 +113,36 @@
   const statusEl = document.getElementById("status")!;
   const drawModeBtn = document.getElementById("draw-mode")!;
   const textModeBtn = document.getElementById("text-mode")!;
-  const brushSizeInput = document.getElementById(
-    "brush-size"
-  ) as HTMLInputElement;
+  const brushUpBtn = document.getElementById("brush-up")!;
+  const brushDownBtn = document.getElementById("brush-down")!;
   const brushValueSpan = document.getElementById("brush-value")!;
+  const fontUpBtn = document.getElementById("font-up")!;
+  const fontDownBtn = document.getElementById("font-down")!;
+  const fontValueSpan = document.getElementById("font-value")!;
 
   const guestbookCtx = guestbookCanvas.getContext("2d")!;
   const drawingCtx = drawingCanvas.getContext("2d")!;
 
   // Global mode state
   (window as any).guestbookMode = "draw";
+
+  function setDrawMode() {
+    (window as any).guestbookMode = "draw";
+    drawModeBtn.classList.add("active");
+    textModeBtn.classList.remove("active");
+    drawingCanvas.classList.remove("text-mode");
+    // Confirm any active textbox when switching to draw
+    if (hasActiveTextbox()) {
+      confirmTextbox();
+    }
+  }
+
+  function setTextMode() {
+    (window as any).guestbookMode = "text";
+    textModeBtn.classList.add("active");
+    drawModeBtn.classList.remove("active");
+    drawingCanvas.classList.add("text-mode");
+  }
 
   function getCanvasCoords(e: MouseEvent | Touch): { x: number; y: number } {
     const rect = drawingCanvas.getBoundingClientRect();
@@ -157,31 +199,47 @@
   }
 
   // Mode switching
-  drawModeBtn.addEventListener("click", () => {
-    (window as any).guestbookMode = "draw";
-    drawModeBtn.classList.add("active");
-    textModeBtn.classList.remove("active");
-    drawingCanvas.classList.remove("text-mode");
-  });
-
-  textModeBtn.addEventListener("click", () => {
-    (window as any).guestbookMode = "text";
-    textModeBtn.classList.add("active");
-    drawModeBtn.classList.remove("active");
-    drawingCanvas.classList.add("text-mode");
-  });
+  drawModeBtn.addEventListener("click", setDrawMode);
+  textModeBtn.addEventListener("click", setTextMode);
 
   // Brush size
-  brushSizeInput.addEventListener("input", () => {
-    const size = parseInt(brushSizeInput.value);
-    setBrushSize(size);
-    brushValueSpan.textContent = String(size);
+  brushUpBtn.addEventListener("click", () => {
+    const newSize = Math.min(getBrushSize() + 1, 50);
+    setBrushSize(newSize);
+    brushValueSpan.textContent = String(newSize);
+    setDrawMode();
+  });
+
+  brushDownBtn.addEventListener("click", () => {
+    const newSize = Math.max(getBrushSize() - 1, 1);
+    setBrushSize(newSize);
+    brushValueSpan.textContent = String(newSize);
+    setDrawMode();
+  });
+
+  // Font size
+  fontUpBtn.addEventListener("click", () => {
+    const newSize = Math.min(getFontSize() + 2, 72);
+    setFontSize(newSize);
+    fontValueSpan.textContent = String(newSize);
+    setTextMode();
+  });
+
+  fontDownBtn.addEventListener("click", () => {
+    const newSize = Math.max(getFontSize() - 2, 8);
+    setFontSize(newSize);
+    fontValueSpan.textContent = String(newSize);
+    setTextMode();
   });
 
   // Text mode click handler
   drawingCanvas.addEventListener("click", (e) => {
-    if ((window as any).guestbookMode === "text" && !hasActiveTextbox()) {
-      createTextbox(e);
+    if ((window as any).guestbookMode === "text") {
+      if (hasActiveTextbox()) {
+        confirmTextbox();
+      } else {
+        createTextbox(e);
+      }
     }
   });
 
@@ -192,6 +250,11 @@
 
   // Submit
   submitBtn.addEventListener("click", async () => {
+    // Confirm any active textbox before submitting
+    if (hasActiveTextbox()) {
+      confirmTextbox();
+    }
+
     statusEl.textContent = "Submitting...";
 
     const imageData = drawingCanvas.toDataURL("image/png");

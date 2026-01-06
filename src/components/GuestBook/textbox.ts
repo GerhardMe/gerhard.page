@@ -3,9 +3,9 @@
 let activeTextbox: HTMLDivElement | null = null;
 let ctx: CanvasRenderingContext2D;
 let canvasWrapper: HTMLElement;
-let getCoords: (e: MouseEvent | Touch) => { x: number; y: number };
 let canvasWidth: number;
 let canvasHeight: number;
+let fontSize = 24;
 
 export function initTextbox(
   wrapper: HTMLElement,
@@ -16,20 +16,43 @@ export function initTextbox(
 ) {
   canvasWrapper = wrapper;
   ctx = context;
-  getCoords = coordsFn;
   canvasWidth = width;
   canvasHeight = height;
+
+  // Escape to cancel
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && activeTextbox) {
+      removeTextbox();
+    }
+  });
+}
+
+export function setFontSize(size: number) {
+  fontSize = size;
+  if (activeTextbox) {
+    const textarea = activeTextbox.querySelector("textarea")!;
+    textarea.style.fontSize = fontSize + "px";
+    textarea.style.lineHeight = (fontSize * 1.2) + "px";
+    autoGrow(textarea);
+  }
+}
+
+export function getFontSize() {
+  return fontSize;
+}
+
+function autoGrow(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  textarea.style.height = textarea.scrollHeight + "px";
 }
 
 export function createTextbox(e: MouseEvent | Touch) {
-  // Remove any existing textbox first
   removeTextbox();
 
   const rect = canvasWrapper.getBoundingClientRect();
   const clientX = 'clientX' in e ? e.clientX : e.clientX;
   const clientY = 'clientY' in e ? e.clientY : e.clientY;
   
-  // Position relative to wrapper (as percentage for responsiveness)
   const leftPx = clientX - rect.left;
   const topPx = clientY - rect.top;
 
@@ -40,136 +63,140 @@ export function createTextbox(e: MouseEvent | Touch) {
     position: absolute;
     left: ${leftPx}px;
     top: ${topPx}px;
-    min-width: 100px;
-    min-height: 40px;
-    border: 2px dashed #000;
-    background: rgba(255,255,255,0.9);
-    cursor: move;
+    width: 200px;
     display: flex;
-    flex-direction: column;
+    cursor: move;
   `;
 
-  // Create textarea
+  // Left bracket (double line)
+  const leftBracket = document.createElement("div");
+  leftBracket.style.cssText = `
+    width: 8px;
+    flex-shrink: 0;
+    display: flex;
+    gap: 2px;
+  `;
+  const leftLine1 = document.createElement("div");
+  leftLine1.style.cssText = `width: 2px; background: #000;`;
+  const leftLine2 = document.createElement("div");
+  leftLine2.style.cssText = `width: 2px; background: #000;`;
+  leftBracket.appendChild(leftLine1);
+  leftBracket.appendChild(leftLine2);
+
+  // Text area container
+  const textContainer = document.createElement("div");
+  textContainer.style.cssText = `
+    flex: 1;
+    min-width: 50px;
+    background: rgba(255,255,255,0.8);
+  `;
+
+  // Textarea
   const textarea = document.createElement("textarea");
   textarea.style.cssText = `
     width: 100%;
-    height: 100%;
-    min-height: 60px;
     border: none;
     background: transparent;
     resize: none;
     font-family: sans-serif;
-    font-size: 14px;
-    padding: 4px;
+    font-size: ${fontSize}px;
+    line-height: ${fontSize * 1.2}px;
+    padding: 2px 4px;
     box-sizing: border-box;
+    overflow: hidden;
+    outline: none;
   `;
-  textarea.placeholder = "Type here...";
+  textarea.placeholder = "Type...";
+  textarea.rows = 1;
 
-  // Create button row
-  const buttons = document.createElement("div");
-  buttons.style.cssText = `
+  // Auto-grow on input
+  textarea.addEventListener("input", () => autoGrow(textarea));
+
+  // Right bracket (double line, draggable for width)
+  const rightBracket = document.createElement("div");
+  rightBracket.style.cssText = `
+    width: 8px;
+    flex-shrink: 0;
     display: flex;
-    gap: 4px;
-    padding: 4px;
-    border-top: 1px solid #ccc;
-    background: #f0f0f0;
+    gap: 2px;
+    cursor: ew-resize;
   `;
+  const rightLine1 = document.createElement("div");
+  rightLine1.style.cssText = `width: 2px; background: #000;`;
+  const rightLine2 = document.createElement("div");
+  rightLine2.style.cssText = `width: 2px; background: #000;`;
+  rightBracket.appendChild(rightLine1);
+  rightBracket.appendChild(rightLine2);
 
-  const doneBtn = document.createElement("button");
-  doneBtn.textContent = "Done";
-  doneBtn.style.cssText = "flex: 1; padding: 4px;";
-  doneBtn.addEventListener("click", () => renderTextbox());
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.textContent = "Cancel";
-  cancelBtn.style.cssText = "flex: 1; padding: 4px;";
-  cancelBtn.addEventListener("click", () => removeTextbox());
-
-  buttons.appendChild(doneBtn);
-  buttons.appendChild(cancelBtn);
-
-  // Create resize handle
-  const resizeHandle = document.createElement("div");
-  resizeHandle.style.cssText = `
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: se-resize;
-    background: linear-gradient(135deg, transparent 50%, #666 50%);
-  `;
-
-  box.appendChild(textarea);
-  box.appendChild(buttons);
-  box.appendChild(resizeHandle);
+  textContainer.appendChild(textarea);
+  box.appendChild(leftBracket);
+  box.appendChild(textContainer);
+  box.appendChild(rightBracket);
   canvasWrapper.appendChild(box);
 
   activeTextbox = box;
   textarea.focus();
 
-  // Dragging
+  // Prevent canvas click when interacting with textbox
+  box.addEventListener("click", (e) => e.stopPropagation());
+
+  // Dragging the whole box
   let isDragging = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
   box.addEventListener("mousedown", (e) => {
-    if (e.target === textarea || e.target === resizeHandle || e.target === doneBtn || e.target === cancelBtn) return;
+    if (e.target === rightBracket) return;
     isDragging = true;
     dragOffsetX = e.clientX - box.offsetLeft;
     dragOffsetY = e.clientY - box.offsetTop;
-    e.preventDefault();
   });
 
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    const wrapperRect = canvasWrapper.getBoundingClientRect();
-    let newLeft = e.clientX - dragOffsetX;
-    let newTop = e.clientY - dragOffsetY;
-    
-    // Keep within bounds
-    newLeft = Math.max(0, Math.min(newLeft, wrapperRect.width - box.offsetWidth));
-    newTop = Math.max(0, Math.min(newTop, wrapperRect.height - box.offsetHeight));
-    
-    box.style.left = newLeft + "px";
-    box.style.top = newTop + "px";
-  });
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging) {
+      const wrapperRect = canvasWrapper.getBoundingClientRect();
+      let newLeft = e.clientX - dragOffsetX;
+      let newTop = e.clientY - dragOffsetY;
+      
+      // Allow overflow, just keep left edge in bounds
+      newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
+      
+      box.style.left = newLeft + "px";
+      box.style.top = newTop + "px";
+    }
+    if (isResizing) {
+      const boxRect = box.getBoundingClientRect();
+      const newWidth = Math.max(60, e.clientX - boxRect.left);
+      box.style.width = newWidth + "px";
+      autoGrow(textarea);
+    }
+  };
 
-  document.addEventListener("mouseup", () => {
+  const handleMouseUp = () => {
     isDragging = false;
-  });
+    isResizing = false;
+  };
 
-  // Resizing
+  document.addEventListener("mousemove", handleMouseMove);
+  document.addEventListener("mouseup", handleMouseUp);
+
+  // Store cleanup function
+  (box as any)._cleanup = () => {
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  };
+
+  // Resizing width via right bracket
   let isResizing = false;
-  let startWidth = 0;
-  let startHeight = 0;
-  let startX = 0;
-  let startY = 0;
 
-  resizeHandle.addEventListener("mousedown", (e) => {
+  rightBracket.addEventListener("mousedown", (e) => {
     isResizing = true;
-    startWidth = box.offsetWidth;
-    startHeight = box.offsetHeight;
-    startX = e.clientX;
-    startY = e.clientY;
     e.preventDefault();
     e.stopPropagation();
   });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!isResizing) return;
-    const newWidth = Math.max(100, startWidth + (e.clientX - startX));
-    const newHeight = Math.max(60, startHeight + (e.clientY - startY));
-    box.style.width = newWidth + "px";
-    textarea.style.height = (newHeight - buttons.offsetHeight) + "px";
-  });
-
-  document.addEventListener("mouseup", () => {
-    isResizing = false;
-  });
 }
 
-function renderTextbox() {
+export function confirmTextbox() {
   if (!activeTextbox) return;
 
   const textarea = activeTextbox.querySelector("textarea")!;
@@ -182,25 +209,24 @@ function renderTextbox() {
   const wrapperRect = canvasWrapper.getBoundingClientRect();
   const boxRect = activeTextbox.getBoundingClientRect();
 
-  // Convert position to canvas coordinates
   const scaleX = canvasWidth / wrapperRect.width;
   const scaleY = canvasHeight / wrapperRect.height;
 
-  const x = (boxRect.left - wrapperRect.left) * scaleX;
+  const x = (boxRect.left - wrapperRect.left + 8) * scaleX; // +8 for left bracket
   const y = (boxRect.top - wrapperRect.top) * scaleY;
-  const width = boxRect.width * scaleX;
+  const width = (boxRect.width - 16) * scaleX; // -16 for both brackets
 
-  // Draw text with wrapping
-  ctx.font = "24px sans-serif";
+  const scaledFontSize = fontSize * scaleX;
+  ctx.font = `${scaledFontSize}px sans-serif`;
   ctx.fillStyle = "#000";
 
-  const lineHeight = 28;
-  const padding = 8 * scaleX;
+  const lineHeight = scaledFontSize * 1.2;
+  const padding = 4 * scaleX;
   const maxWidth = width - (padding * 2);
 
   const lines = wrapText(text, maxWidth);
   lines.forEach((line, i) => {
-    ctx.fillText(line, x + padding, y + padding + lineHeight + (i * lineHeight));
+    ctx.fillText(line, x + padding, y + scaledFontSize + (i * lineHeight));
   });
 
   removeTextbox();
@@ -211,6 +237,10 @@ function wrapText(text: string, maxWidth: number): string[] {
   const lines: string[] = [];
 
   paragraphs.forEach((paragraph) => {
+    if (paragraph === "") {
+      lines.push("");
+      return;
+    }
     const words = paragraph.split(" ");
     let currentLine = "";
 
@@ -236,6 +266,9 @@ function wrapText(text: string, maxWidth: number): string[] {
 
 export function removeTextbox() {
   if (activeTextbox) {
+    if ((activeTextbox as any)._cleanup) {
+      (activeTextbox as any)._cleanup();
+    }
     activeTextbox.remove();
     activeTextbox = null;
   }
