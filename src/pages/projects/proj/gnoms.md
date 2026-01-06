@@ -61,7 +61,7 @@ The script handling this also lives in this folder. Reconfigure.sh is the main s
 
 ![Image](/projects/gnoms/logo.png)
 
-The personal folder is made purely to divide the system more to my liking. I don't like having to enter the large configuration files for adding programs, and I would like to be able to quickly change my username without having to go through all the files in the system. I also wanted to make a way for someone unfamiliar with the system to quickly make it their own. The idea was to make a personal folder where everything uniquely mine was to be saved. Wallpaper and logo also live here. The profile.conf is easy to customize and expand upon.
+The personal folder is made purely to divide the system more to my liking. I don't like having to enter the large configuration files for adding programs, and I would like to be able to quickly change my username without having to go through all the files in the system. I also wanted to make a way for someone unfamiliar with the system to quickly make it their own. Wallpaper and logo also live here. The profile.conf is easy to customize and expand upon. By far the simplest part of GNOMS.
 
 ## Scripts
 
@@ -69,9 +69,13 @@ The personal folder is made purely to divide the system more to my liking. I don
 
 The system also manages a variety of custom scripts. All of these scripts live in the /scripts folder. This is the part of Linux customization I find really fun. Everything from volume handling and battery warning systems to monitor detection systems and auto-detection of microcontrollers is custom built, and most of it works well. 
 
-One specific system I spent a lot of time on is the mode switch system. I have often found laptops going into sleep when you don't want to or the fan not working its hardest when needed or the other way around rather annoying. I also made 3 modes for any computer running my system. Either normal, server or performance. Typing `mode server` prevents sleep and allows incoming SSH sessions. `mode performance` changes CPU flags and uses the fan more aggressively. Although performance mode is rarely used, server mode has proved itself more useful than initially thought. I think the mode changing system works great and I have now simply used an older laptop as a homelabbing server with simply typing `mode server`.
+One specific system I spent a lot of time on is the mode switch system. I have found laptops going to sleep at the wrong time rather annoying, so I made 3 modes for any computer running my system. Either normal, server or performance. Typing `mode server` prevents sleep and allows incoming SSH sessions. `mode performance` changes CPU flags and uses the fan more aggressively. Although performance mode is rarely used, server mode has proved itself more useful than initially thought. I think the mode changing system works great and I have now simply used an older laptop as a homelabbing server with simply typing `mode server`.
 
 Lastly I should quickly mention the eGPU capabilities of GNOMS. I have an NVIDIA eGPU that connects via Thunderbolt to the laptop. It took some real work to get it working, but it's now neatly incorporated in GNOMS. Nix allows for different profiles at boot so the setup has one normal and one eGPU profile at boot. Simply choose the eGPU for any NVIDIA based system. Adding some other eGPU should be simple by looking over how I incorporated NVIDIA. I also added scripts handling running programs with the eGPU when available. This way I am finally able to play Minecraft with shaders.
+
+## Summary
+
+So what is GNOMS? A way to store your entire computer system in one folder. It's really that simple. If you keep this folder on github, you now have your whole computer system backed up on github. If you want to save your dotfiles, no need, they also live in the GNOMS folder. The project now lives on github for anyone to fork.
 
 ![Image](/projects/gnoms/github.png)
 
