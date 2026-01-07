@@ -44,7 +44,6 @@ input[type="color"] {
 }
 
 input[type="range"] {
-    min-width: 8em;
     width: 100%;
     appearance: auto;
 }

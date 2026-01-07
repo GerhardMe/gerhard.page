@@ -9,10 +9,12 @@
 </div>
 <div class="row">
   <div class="element">
-    <button class="draw-mode mode active" title="Draw"
-      ><span class="icon">&#xf040;</span></button
+    <span>
+      <button class="draw-mode mode active" title="Draw"
+        ><span class="icon">&#xf040;</span></button
+      >
+      <div class="size-value brush-value">3px</div></span
     >
-    <div class="size-value brush-value">3px</div>
     <span class="center-y">
       <input
         type="range"
@@ -25,11 +27,11 @@
   </div>
 
   <div class="element">
-    <button class="undo-btn">Undo</button>
     <button class="submit-btn">Send</button>
+    <button class="undo-btn">Undo</button>
   </div>
 
-  <div class="element">
+  <div class="element reverse">
     <span class="center-yx">
       <input
         type="range"
@@ -39,10 +41,12 @@
         value="24"
       /></span
     >
-    <div class="size-value font-value">24pt</div>
-    <button class="text-mode mode" title="Text"
-      ><span class="icon">&#xf031;</span></button
-    >
+    <span>
+      <div class="size-value font-value">24pt</div>
+      <button class="text-mode mode" title="Text"
+        ><span class="icon">&#xf031;</span></button
+      >
+    </span>
   </div>
 </div>
 
@@ -51,9 +55,6 @@
     display: flex;
     justify-content: space-between;
     width: 100%;
-  }
-
-  .element {
   }
 
   .size-value {
@@ -65,7 +66,7 @@
   }
 
   input[type="range"] {
-    width: 8em;
+    width: 7em;
     cursor: pointer;
 
     transform: translateY(4px);
@@ -119,6 +120,18 @@
       font-weight: normal !important;
 
       cursor: default;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .element {
+      display: flex;
+      justify-content: space-evenly;
+      flex-direction: column;
+
+      &.reverse {
+        flex-direction: column-reverse;
+      }
     }
   }
 </style>
