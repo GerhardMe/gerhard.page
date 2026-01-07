@@ -149,8 +149,16 @@
     setTextboxFontSize(state.fontSize);
   });
 
-  // Text mode click handler (mouse)
+  // Text mode handlers
+  // Track if we just handled a touch to prevent duplicate click
+  let handledByTouch = false;
+
+  // Mouse click handler
   drawingCanvas.addEventListener("click", (e) => {
+    if (handledByTouch) {
+      handledByTouch = false;
+      return;
+    }
     if (state.mode === "text") {
       if (hasActiveTextbox()) {
         confirmTextbox();
@@ -160,8 +168,7 @@
     }
   });
 
-  // Text mode touch handler
-  // Track touch count to allow pinch-to-zoom
+  // Touch handler - track touch count to allow pinch-to-zoom
   let touchCount = 0;
 
   drawingCanvas.addEventListener(
@@ -173,7 +180,6 @@
   );
 
   drawingCanvas.addEventListener("touchend", (e) => {
-    // Don't create textbox if this was a multi-touch gesture
     if (touchCount > 1) {
       touchCount = e.touches.length;
       return;
@@ -181,13 +187,12 @@
     touchCount = e.touches.length;
 
     if (state.mode === "text") {
+      handledByTouch = true;
       if (hasActiveTextbox()) {
-        // Just confirm, don't create new one
         confirmTextbox();
       } else {
         e.preventDefault();
-        const touch = e.changedTouches[0];
-        createTextbox(touch);
+        createTextbox(e.changedTouches[0]);
       }
     }
   });
