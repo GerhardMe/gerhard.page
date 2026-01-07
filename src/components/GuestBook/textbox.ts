@@ -176,8 +176,6 @@ export function createTextbox(e: MouseEvent | Touch) {
   box.addEventListener("pointerdown", (e) => {
     const target = e.target as Node;
     if (rightBracket.contains(target) || target === rightBracket) return;
-    if (target === textarea) return;
-    
     isDragging = true;
     dragOffsetX = e.clientX - box.offsetLeft;
     dragOffsetY = e.clientY - box.offsetTop;
