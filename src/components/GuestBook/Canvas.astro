@@ -24,7 +24,7 @@
   }
 
   #guestbook-canvas {
-    background: #fff;
+    background: #fcfaf6;
     box-shadow: 0 0 8px var(--color-shadow);
   }
 
@@ -75,12 +75,9 @@
     const scaleX = state.canvasWidth / rect.width;
     const scaleY = state.canvasHeight / rect.height;
 
-    const clientX = "clientX" in e ? e.clientX : e.clientX;
-    const clientY = "clientY" in e ? e.clientY : e.clientY;
-
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
   }
 
@@ -108,8 +105,12 @@
   }
 
   async function loadGuestbook() {
+    // Clear the guestbook canvas before loading new page
+    guestbookCtx.fillStyle = "#fff";
+    guestbookCtx.fillRect(0, 0, guestbookCanvas.width, guestbookCanvas.height);
+
     try {
-      const response = await fetch(API_URL);
+      const response = await fetch(`${API_URL}?page=${state.currentPage}`);
       if (response.ok) {
         const blob = await response.blob();
         const img = new Image();
@@ -125,7 +126,7 @@
         img.src = URL.createObjectURL(blob);
       }
     } catch (e) {
-      console.log("No existing guestbook yet");
+      console.log("No existing guestbook page yet");
     }
   }
 

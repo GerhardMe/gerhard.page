@@ -1,0 +1,124 @@
+---
+
+---
+
+<div class="row">
+  <button class="prev-page" title="Previous page">← Prev</button>
+  <span class="page-indicator">1 / 10</span>
+  <button class="next-page" title="Next page">Next →</button>
+</div>
+<div class="row">
+  <div class="element">
+    <button class="draw-mode mode active" title="Draw"
+      ><span class="icon">&#xf040;</span></button
+    >
+    <div class="size-value brush-value">3px</div>
+    <span class="center-y">
+      <input
+        type="range"
+        class="brush-slider"
+        min="1"
+        max="10"
+        value="3"
+      /></span
+    >
+  </div>
+
+  <div class="element">
+    <button class="undo-btn">Undo</button>
+    <button class="submit-btn">Send</button>
+  </div>
+
+  <div class="element">
+    <span class="center-yx">
+      <input
+        type="range"
+        class="font-slider"
+        min="18"
+        max="54"
+        value="24"
+      /></span
+    >
+    <div class="size-value font-value">24pt</div>
+    <button class="text-mode mode" title="Text"
+      ><span class="icon">&#xf031;</span></button
+    >
+  </div>
+</div>
+
+<style>
+  .row {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .element {
+  }
+
+  .size-value {
+    display: inline-block;
+    font-size: 0.9em;
+    color: #666;
+    width: 3em;
+    text-align: center;
+  }
+
+  input[type="range"] {
+    width: 8em;
+    cursor: pointer;
+
+    transform: translateY(4px);
+  }
+
+  .page-indicator {
+    font-size: 0.9em;
+    color: #666;
+    text-align: center;
+  }
+
+  button {
+    cursor: pointer;
+    user-select: none;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+      font-weight: normal !important;
+      text-decoration: none !important;
+    }
+    &:hover {
+      font-weight: bold;
+    }
+    &:active {
+      text-decoration: underline;
+    }
+  }
+
+  .mode {
+    font-size: 1.1em;
+    width: 1.9em;
+    height: 1.6em;
+    text-align: center;
+    border-radius: 0.3em;
+
+    border: 2px solid var(--color-bg-dark);
+    background-color: var(--color-backdrop);
+
+    color: var(--color-text);
+
+    &:hover {
+      color: var(--color-accent);
+      border: 2px solid var(--color-accent);
+    }
+
+    &.active {
+      color: var(--color-accent);
+      background-color: var(--color-bg-dark);
+      border: 2px solid var(--color-accent);
+      font-weight: normal !important;
+
+      cursor: default;
+    }
+  }
+</style>

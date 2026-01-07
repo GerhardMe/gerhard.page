@@ -29,11 +29,35 @@ a {
 }
 
 button,
-input,
 textarea,
 select {
     all: unset;
 }
+
+input[type="color"] {
+    width: 1.3em;
+    height: 1.3em;
+    border: none;
+    padding: 0;
+    border-radius: 5px;
+    background: #111;
+}
+
+input[type="range"] {
+    min-width: 8em;
+    width: 100%;
+    appearance: auto;
+}
+
+input[type="number"] {
+    max-width: 8em;
+    appearance: auto;
+    border: 1px solid;
+    border-radius: 3px;
+    padding: 1px;
+    padding-left: 0.2em;
+}
+
 
 .center {
     display: grid;
@@ -41,6 +65,17 @@ select {
     * {
         place-self: center;
     }
+}
+
+.center-y {
+
+
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: space-around;
+
+    height: 100%;
+
 }
 
 .animateHide {

@@ -5,6 +5,8 @@
 export const DRAW_COLOR = "#222222";
 // ========================================
 
+export const TOTAL_PAGES = 10;
+
 export type StrokeAction = {
   type: "stroke";
   points: { x: number; y: number }[];
@@ -22,15 +24,24 @@ export type TextAction = {
 
 export type Action = StrokeAction | TextAction;
 
+// Store actions per page
+const pageActions: Map<number, Action[]> = new Map();
+
 export const state = {
   mode: "draw" as "draw" | "text",
   brushSize: 3,
   fontSize: 24,
+  currentPage: 1,
   drawingCtx: null as CanvasRenderingContext2D | null,
   guestbookCtx: null as CanvasRenderingContext2D | null,
   canvasWidth: 1240,
   canvasHeight: Math.round(1240 * 1.4142),
-  actions: [] as Action[],
+  get actions(): Action[] {
+    if (!pageActions.has(this.currentPage)) {
+      pageActions.set(this.currentPage, []);
+    }
+    return pageActions.get(this.currentPage)!;
+  },
 };
 
 type Listener = () => void;
@@ -64,18 +75,40 @@ export function setFontSize(size: number) {
   notify();
 }
 
+export function setPage(page: number) {
+  if (page >= 1 && page <= TOTAL_PAGES) {
+    state.currentPage = page;
+    notify();
+  }
+}
+
+export function nextPage() {
+  setPage(state.currentPage + 1);
+}
+
+export function prevPage() {
+  setPage(state.currentPage - 1);
+}
+
 export function addAction(action: Action) {
   state.actions.push(action);
   notify();
 }
 
 export function undo(): Action | undefined {
-  const action = state.actions.pop();
+  const actions = state.actions;
+  const action = actions.pop();
   notify();
   return action;
 }
 
 export function clearActions() {
-  state.actions = [];
+  const actions = state.actions;
+  actions.length = 0;
+  notify();
+}
+
+export function clearAllPages() {
+  pageActions.clear();
   notify();
 }
