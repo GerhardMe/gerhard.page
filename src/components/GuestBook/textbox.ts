@@ -9,12 +9,6 @@ let canvasWidth: number;
 let canvasHeight: number;
 let fontSize = 24;
 
-// Track active pointers for drag and resize
-let dragPointerId: number | null = null;
-let resizePointerId: number | null = null;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-
 export function initTextbox(
   wrapper: HTMLElement,
   context: CanvasRenderingContext2D,
@@ -95,6 +89,7 @@ export function createTextbox(e: MouseEvent | Touch) {
     flex-shrink: 0;
     display: flex;
     gap: 2px;
+    pointer-events: none;
   `;
   const leftLine1 = document.createElement("div");
   leftLine1.style.cssText = `width: 2px; background: #000; pointer-events: none;`;
@@ -171,98 +166,64 @@ export function createTextbox(e: MouseEvent | Touch) {
   box.addEventListener("click", (e) => e.stopPropagation());
   box.addEventListener("touchend", (e) => e.stopPropagation());
 
-  // === Pointer event handlers ===
+  // === Drag and resize state ===
+  let isDragging = false;
+  let isResizing = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
 
   // Start drag on box (but not on right bracket or textarea)
-  const handleBoxPointerDown = (e: PointerEvent) => {
+  box.addEventListener("pointerdown", (e) => {
     const target = e.target as Node;
-    // Don't start drag if clicking on resize bracket or textarea
     if (rightBracket.contains(target) || target === rightBracket) return;
     if (target === textarea) return;
-    if (dragPointerId !== null) return; // Already dragging with another pointer
     
-    dragPointerId = e.pointerId;
+    isDragging = true;
     dragOffsetX = e.clientX - box.offsetLeft;
     dragOffsetY = e.clientY - box.offsetTop;
-    
-    box.setPointerCapture(e.pointerId);
     e.preventDefault();
-  };
-
-  // Move handler for drag
-  const handleBoxPointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== dragPointerId) return;
-    
-    const wrapperRect = canvasWrapper.getBoundingClientRect();
-    let newLeft = e.clientX - dragOffsetX;
-    let newTop = e.clientY - dragOffsetY;
-    
-    newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
-    
-    box.style.left = newLeft + "px";
-    box.style.top = newTop + "px";
-  };
-
-  // End drag
-  const handleBoxPointerUp = (e: PointerEvent) => {
-    if (e.pointerId !== dragPointerId) return;
-    
-    box.releasePointerCapture(e.pointerId);
-    dragPointerId = null;
-  };
+  });
 
   // Start resize on right bracket
-  const handleBracketPointerDown = (e: PointerEvent) => {
-    if (resizePointerId !== null) return; // Already resizing with another pointer
-    
-    resizePointerId = e.pointerId;
-    rightBracket.setPointerCapture(e.pointerId);
+  rightBracket.addEventListener("pointerdown", (e) => {
+    isResizing = true;
     e.preventDefault();
     e.stopPropagation();
+  });
+
+  // Move handler on document
+  const handlePointerMove = (e: PointerEvent) => {
+    if (isDragging) {
+      const wrapperRect = canvasWrapper.getBoundingClientRect();
+      let newLeft = e.clientX - dragOffsetX;
+      let newTop = e.clientY - dragOffsetY;
+      
+      newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
+      
+      box.style.left = newLeft + "px";
+      box.style.top = newTop + "px";
+    }
+    if (isResizing) {
+      const boxRect = box.getBoundingClientRect();
+      const newWidth = Math.max(60, e.clientX - boxRect.left);
+      box.style.width = newWidth + "px";
+      autoGrow(textarea);
+    }
   };
 
-  // Move handler for resize
-  const handleBracketPointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== resizePointerId) return;
-    
-    const boxRect = box.getBoundingClientRect();
-    const newWidth = Math.max(60, e.clientX - boxRect.left);
-    box.style.width = newWidth + "px";
-    autoGrow(textarea);
+  // End handler on document
+  const handlePointerUp = () => {
+    isDragging = false;
+    isResizing = false;
   };
 
-  // End resize
-  const handleBracketPointerUp = (e: PointerEvent) => {
-    if (e.pointerId !== resizePointerId) return;
-    
-    rightBracket.releasePointerCapture(e.pointerId);
-    resizePointerId = null;
-  };
-
-  // Attach box handlers
-  box.addEventListener("pointerdown", handleBoxPointerDown);
-  box.addEventListener("pointermove", handleBoxPointerMove);
-  box.addEventListener("pointerup", handleBoxPointerUp);
-  box.addEventListener("pointercancel", handleBoxPointerUp);
-
-  // Attach bracket handlers
-  rightBracket.addEventListener("pointerdown", handleBracketPointerDown);
-  rightBracket.addEventListener("pointermove", handleBracketPointerMove);
-  rightBracket.addEventListener("pointerup", handleBracketPointerUp);
-  rightBracket.addEventListener("pointercancel", handleBracketPointerUp);
+  document.addEventListener("pointermove", handlePointerMove);
+  document.addEventListener("pointerup", handlePointerUp);
 
   // Store cleanup function
   (box as any)._cleanup = () => {
-    box.removeEventListener("pointerdown", handleBoxPointerDown);
-    box.removeEventListener("pointermove", handleBoxPointerMove);
-    box.removeEventListener("pointerup", handleBoxPointerUp);
-    box.removeEventListener("pointercancel", handleBoxPointerUp);
-    rightBracket.removeEventListener("pointerdown", handleBracketPointerDown);
-    rightBracket.removeEventListener("pointermove", handleBracketPointerMove);
-    rightBracket.removeEventListener("pointerup", handleBracketPointerUp);
-    rightBracket.removeEventListener("pointercancel", handleBracketPointerUp);
-    dragPointerId = null;
-    resizePointerId = null;
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", handlePointerUp);
   };
 }
 
