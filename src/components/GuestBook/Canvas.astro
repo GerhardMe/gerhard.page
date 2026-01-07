@@ -161,7 +161,25 @@
   });
 
   // Text mode touch handler
+  // Track touch count to allow pinch-to-zoom
+  let touchCount = 0;
+
+  drawingCanvas.addEventListener(
+    "touchstart",
+    (e) => {
+      touchCount = e.touches.length;
+    },
+    { passive: true }
+  );
+
   drawingCanvas.addEventListener("touchend", (e) => {
+    // Don't create textbox if this was a multi-touch gesture
+    if (touchCount > 1) {
+      touchCount = e.touches.length;
+      return;
+    }
+    touchCount = e.touches.length;
+
     if (state.mode === "text") {
       const touch = e.changedTouches[0];
       if (hasActiveTextbox()) {

@@ -22,9 +22,9 @@ export function initDrawing(
   canvas.addEventListener("mouseup", handleMouseUp);
   canvas.addEventListener("mouseleave", handleMouseUp);
 
-  canvas.addEventListener("touchstart", handleTouchStart);
-  canvas.addEventListener("touchmove", handleTouchMove);
-  canvas.addEventListener("touchend", handleMouseUp);
+  canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+  canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+  canvas.addEventListener("touchend", handleTouchEnd);
 }
 
 function startStroke(x: number, y: number) {
@@ -58,6 +58,12 @@ function endStroke() {
   currentStroke = [];
 }
 
+// Cancel stroke without saving (used when multi-touch detected)
+function cancelStroke() {
+  isDrawing = false;
+  currentStroke = [];
+}
+
 function handleMouseDown(e: MouseEvent) {
   if ((window as any).guestbookMode !== "draw") return;
   const { x, y } = getCoords(e);
@@ -75,17 +81,40 @@ function handleMouseUp() {
 }
 
 function handleTouchStart(e: TouchEvent) {
-  e.preventDefault();
   if ((window as any).guestbookMode !== "draw") return;
+  
+  // Multi-touch: cancel any drawing and let browser handle zoom/pan
+  if (e.touches.length > 1) {
+    cancelStroke();
+    return; // Don't preventDefault - allow pinch zoom
+  }
+  
+  e.preventDefault();
   const { x, y } = getCoords(e.touches[0]);
   startStroke(x, y);
 }
 
 function handleTouchMove(e: TouchEvent) {
+  if ((window as any).guestbookMode !== "draw") return;
+  
+  // Multi-touch: cancel drawing and let browser handle zoom/pan
+  if (e.touches.length > 1) {
+    cancelStroke();
+    return; // Don't preventDefault - allow pinch zoom
+  }
+  
+  if (!isDrawing) return;
+  
   e.preventDefault();
-  if ((window as any).guestbookMode !== "draw" || !isDrawing) return;
   const { x, y } = getCoords(e.touches[0]);
   continueStroke(x, y);
+}
+
+function handleTouchEnd(e: TouchEvent) {
+  // Only end stroke if no more touches remain
+  if (e.touches.length === 0) {
+    endStroke();
+  }
 }
 
 export function setBrushSize(size: number) {

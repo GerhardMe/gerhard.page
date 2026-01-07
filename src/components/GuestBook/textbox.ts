@@ -9,6 +9,12 @@ let canvasWidth: number;
 let canvasHeight: number;
 let fontSize = 24;
 
+// Track active pointers for drag and resize
+let dragPointerId: number | null = null;
+let resizePointerId: number | null = null;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
 export function initTextbox(
   wrapper: HTMLElement,
   context: CanvasRenderingContext2D,
@@ -56,18 +62,6 @@ function autoGrow(textarea: HTMLTextAreaElement) {
   textarea.style.height = textarea.scrollHeight + "px";
 }
 
-// Helper to get clientX/clientY from mouse or touch event
-function getClientCoords(e: MouseEvent | TouchEvent | Touch): { clientX: number; clientY: number } {
-  if ('touches' in e) {
-    // TouchEvent
-    return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
-  } else if ('clientX' in e) {
-    // MouseEvent or Touch
-    return { clientX: e.clientX, clientY: e.clientY };
-  }
-  return { clientX: 0, clientY: 0 };
-}
-
 export function createTextbox(e: MouseEvent | Touch) {
   removeTextbox();
 
@@ -103,9 +97,9 @@ export function createTextbox(e: MouseEvent | Touch) {
     gap: 2px;
   `;
   const leftLine1 = document.createElement("div");
-  leftLine1.style.cssText = `width: 2px; background: #000;`;
+  leftLine1.style.cssText = `width: 2px; background: #000; pointer-events: none;`;
   const leftLine2 = document.createElement("div");
-  leftLine2.style.cssText = `width: 2px; background: #000;`;
+  leftLine2.style.cssText = `width: 2px; background: #000; pointer-events: none;`;
   leftBracket.appendChild(leftLine1);
   leftBracket.appendChild(leftLine2);
 
@@ -118,6 +112,7 @@ export function createTextbox(e: MouseEvent | Touch) {
     background: rgba(255,255,255,0.8);
     display: flex;
     align-items: flex-start;
+    pointer-events: none;
   `;
 
   // Textarea
@@ -136,6 +131,8 @@ export function createTextbox(e: MouseEvent | Touch) {
     overflow: hidden;
     outline: none;
     color: ${DRAW_COLOR};
+    touch-action: pan-x pan-y;
+    pointer-events: auto;
   `;
   textarea.placeholder = "Type...";
   textarea.rows = 1;
@@ -155,9 +152,9 @@ export function createTextbox(e: MouseEvent | Touch) {
     touch-action: none;
   `;
   const rightLine1 = document.createElement("div");
-  rightLine1.style.cssText = `width: 2px; background: #000;`;
+  rightLine1.style.cssText = `width: 2px; background: #000; pointer-events: none;`;
   const rightLine2 = document.createElement("div");
-  rightLine2.style.cssText = `width: 2px; background: #000;`;
+  rightLine2.style.cssText = `width: 2px; background: #000; pointer-events: none;`;
   rightBracket.appendChild(rightLine1);
   rightBracket.appendChild(rightLine2);
 
@@ -170,110 +167,103 @@ export function createTextbox(e: MouseEvent | Touch) {
   activeTextbox = box;
   textarea.focus();
 
-  // Prevent canvas click/touch when interacting with textbox
+  // Prevent canvas interactions when interacting with textbox
   box.addEventListener("click", (e) => e.stopPropagation());
   box.addEventListener("touchend", (e) => e.stopPropagation());
 
-  // Dragging state
-  let isDragging = false;
-  let isResizing = false;
-  let dragOffsetX = 0;
-  let dragOffsetY = 0;
+  // === Pointer event handlers ===
 
-  // Start drag (mouse)
-  box.addEventListener("mousedown", (e) => {
-    if (e.target === rightBracket || rightBracket.contains(e.target as Node)) return;
-    if (e.target === textarea) return;
-    isDragging = true;
+  // Start drag on box (but not on right bracket or textarea)
+  const handleBoxPointerDown = (e: PointerEvent) => {
+    const target = e.target as Node;
+    // Don't start drag if clicking on resize bracket or textarea
+    if (rightBracket.contains(target) || target === rightBracket) return;
+    if (target === textarea) return;
+    if (dragPointerId !== null) return; // Already dragging with another pointer
+    
+    dragPointerId = e.pointerId;
     dragOffsetX = e.clientX - box.offsetLeft;
     dragOffsetY = e.clientY - box.offsetTop;
-  });
-
-  // Start drag (touch)
-  box.addEventListener("touchstart", (e) => {
-    if (e.target === rightBracket || rightBracket.contains(e.target as Node)) return;
-    if (e.target === textarea) return;
-    isDragging = true;
-    const touch = e.touches[0];
-    dragOffsetX = touch.clientX - box.offsetLeft;
-    dragOffsetY = touch.clientY - box.offsetTop;
-  });
-
-  // Move handler (mouse)
-  const handleMouseMove = (e: MouseEvent) => {
-    if (isDragging) {
-      const wrapperRect = canvasWrapper.getBoundingClientRect();
-      let newLeft = e.clientX - dragOffsetX;
-      let newTop = e.clientY - dragOffsetY;
-      
-      newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
-      
-      box.style.left = newLeft + "px";
-      box.style.top = newTop + "px";
-    }
-    if (isResizing) {
-      const boxRect = box.getBoundingClientRect();
-      const newWidth = Math.max(60, e.clientX - boxRect.left);
-      box.style.width = newWidth + "px";
-      autoGrow(textarea);
-    }
+    
+    box.setPointerCapture(e.pointerId);
+    e.preventDefault();
   };
 
-  // Move handler (touch)
-  const handleTouchMove = (e: TouchEvent) => {
-    const touch = e.touches[0];
-    if (isDragging) {
-      e.preventDefault();
-      const wrapperRect = canvasWrapper.getBoundingClientRect();
-      let newLeft = touch.clientX - dragOffsetX;
-      let newTop = touch.clientY - dragOffsetY;
-      
-      newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
-      
-      box.style.left = newLeft + "px";
-      box.style.top = newTop + "px";
-    }
-    if (isResizing) {
-      e.preventDefault();
-      const boxRect = box.getBoundingClientRect();
-      const newWidth = Math.max(60, touch.clientX - boxRect.left);
-      box.style.width = newWidth + "px";
-      autoGrow(textarea);
-    }
+  // Move handler for drag
+  const handleBoxPointerMove = (e: PointerEvent) => {
+    if (e.pointerId !== dragPointerId) return;
+    
+    const wrapperRect = canvasWrapper.getBoundingClientRect();
+    let newLeft = e.clientX - dragOffsetX;
+    let newTop = e.clientY - dragOffsetY;
+    
+    newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
+    
+    box.style.left = newLeft + "px";
+    box.style.top = newTop + "px";
   };
 
-  // End handler
-  const handleEnd = () => {
-    isDragging = false;
-    isResizing = false;
+  // End drag
+  const handleBoxPointerUp = (e: PointerEvent) => {
+    if (e.pointerId !== dragPointerId) return;
+    
+    box.releasePointerCapture(e.pointerId);
+    dragPointerId = null;
   };
 
-  document.addEventListener("mousemove", handleMouseMove);
-  document.addEventListener("mouseup", handleEnd);
-  document.addEventListener("touchmove", handleTouchMove, { passive: false });
-  document.addEventListener("touchend", handleEnd);
+  // Start resize on right bracket
+  const handleBracketPointerDown = (e: PointerEvent) => {
+    if (resizePointerId !== null) return; // Already resizing with another pointer
+    
+    resizePointerId = e.pointerId;
+    rightBracket.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Move handler for resize
+  const handleBracketPointerMove = (e: PointerEvent) => {
+    if (e.pointerId !== resizePointerId) return;
+    
+    const boxRect = box.getBoundingClientRect();
+    const newWidth = Math.max(60, e.clientX - boxRect.left);
+    box.style.width = newWidth + "px";
+    autoGrow(textarea);
+  };
+
+  // End resize
+  const handleBracketPointerUp = (e: PointerEvent) => {
+    if (e.pointerId !== resizePointerId) return;
+    
+    rightBracket.releasePointerCapture(e.pointerId);
+    resizePointerId = null;
+  };
+
+  // Attach box handlers
+  box.addEventListener("pointerdown", handleBoxPointerDown);
+  box.addEventListener("pointermove", handleBoxPointerMove);
+  box.addEventListener("pointerup", handleBoxPointerUp);
+  box.addEventListener("pointercancel", handleBoxPointerUp);
+
+  // Attach bracket handlers
+  rightBracket.addEventListener("pointerdown", handleBracketPointerDown);
+  rightBracket.addEventListener("pointermove", handleBracketPointerMove);
+  rightBracket.addEventListener("pointerup", handleBracketPointerUp);
+  rightBracket.addEventListener("pointercancel", handleBracketPointerUp);
 
   // Store cleanup function
   (box as any)._cleanup = () => {
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleEnd);
-    document.removeEventListener("touchmove", handleTouchMove);
-    document.removeEventListener("touchend", handleEnd);
+    box.removeEventListener("pointerdown", handleBoxPointerDown);
+    box.removeEventListener("pointermove", handleBoxPointerMove);
+    box.removeEventListener("pointerup", handleBoxPointerUp);
+    box.removeEventListener("pointercancel", handleBoxPointerUp);
+    rightBracket.removeEventListener("pointerdown", handleBracketPointerDown);
+    rightBracket.removeEventListener("pointermove", handleBracketPointerMove);
+    rightBracket.removeEventListener("pointerup", handleBracketPointerUp);
+    rightBracket.removeEventListener("pointercancel", handleBracketPointerUp);
+    dragPointerId = null;
+    resizePointerId = null;
   };
-
-  // Start resize (mouse)
-  rightBracket.addEventListener("mousedown", (e) => {
-    isResizing = true;
-    e.preventDefault();
-    e.stopPropagation();
-  });
-
-  // Start resize (touch)
-  rightBracket.addEventListener("touchstart", (e) => {
-    isResizing = true;
-    e.preventDefault();
-    e.stopPropagation();
-  });
 }
 
 export function confirmTextbox() {
