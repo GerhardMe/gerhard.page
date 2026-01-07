@@ -149,13 +149,26 @@
     setTextboxFontSize(state.fontSize);
   });
 
-  // Text mode click handler
+  // Text mode click handler (mouse)
   drawingCanvas.addEventListener("click", (e) => {
     if (state.mode === "text") {
       if (hasActiveTextbox()) {
         confirmTextbox();
       } else {
         createTextbox(e);
+      }
+    }
+  });
+
+  // Text mode touch handler
+  drawingCanvas.addEventListener("touchend", (e) => {
+    if (state.mode === "text") {
+      const touch = e.changedTouches[0];
+      if (hasActiveTextbox()) {
+        confirmTextbox();
+      } else {
+        e.preventDefault();
+        createTextbox(touch);
       }
     }
   });

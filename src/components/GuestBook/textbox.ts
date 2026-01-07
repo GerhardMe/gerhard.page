@@ -56,15 +56,24 @@ function autoGrow(textarea: HTMLTextAreaElement) {
   textarea.style.height = textarea.scrollHeight + "px";
 }
 
+// Helper to get clientX/clientY from mouse or touch event
+function getClientCoords(e: MouseEvent | TouchEvent | Touch): { clientX: number; clientY: number } {
+  if ('touches' in e) {
+    // TouchEvent
+    return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+  } else if ('clientX' in e) {
+    // MouseEvent or Touch
+    return { clientX: e.clientX, clientY: e.clientY };
+  }
+  return { clientX: 0, clientY: 0 };
+}
+
 export function createTextbox(e: MouseEvent | Touch) {
   removeTextbox();
 
   const rect = canvasWrapper.getBoundingClientRect();
-  const clientX = 'clientX' in e ? e.clientX : e.clientX;
-  const clientY = 'clientY' in e ? e.clientY : e.clientY;
-  
-  const leftPx = clientX - rect.left;
-  const topPx = clientY - rect.top;
+  const leftPx = e.clientX - rect.left;
+  const topPx = e.clientY - rect.top;
 
   // Default width: 1/4 of canvas display width, minimum 100px
   const defaultWidth = Math.max(100, rect.width / 4);
@@ -81,6 +90,7 @@ export function createTextbox(e: MouseEvent | Touch) {
     display: flex;
     align-items: stretch;
     cursor: move;
+    touch-action: none;
   `;
 
   // Left bracket (double line)
@@ -142,6 +152,7 @@ export function createTextbox(e: MouseEvent | Touch) {
     display: flex;
     gap: 2px;
     cursor: ew-resize;
+    touch-action: none;
   `;
   const rightLine1 = document.createElement("div");
   rightLine1.style.cssText = `width: 2px; background: #000;`;
@@ -159,28 +170,42 @@ export function createTextbox(e: MouseEvent | Touch) {
   activeTextbox = box;
   textarea.focus();
 
-  // Prevent canvas click when interacting with textbox
+  // Prevent canvas click/touch when interacting with textbox
   box.addEventListener("click", (e) => e.stopPropagation());
+  box.addEventListener("touchend", (e) => e.stopPropagation());
 
-  // Dragging the whole box
+  // Dragging state
   let isDragging = false;
+  let isResizing = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
+  // Start drag (mouse)
   box.addEventListener("mousedown", (e) => {
-    if (e.target === rightBracket) return;
+    if (e.target === rightBracket || rightBracket.contains(e.target as Node)) return;
+    if (e.target === textarea) return;
     isDragging = true;
     dragOffsetX = e.clientX - box.offsetLeft;
     dragOffsetY = e.clientY - box.offsetTop;
   });
 
+  // Start drag (touch)
+  box.addEventListener("touchstart", (e) => {
+    if (e.target === rightBracket || rightBracket.contains(e.target as Node)) return;
+    if (e.target === textarea) return;
+    isDragging = true;
+    const touch = e.touches[0];
+    dragOffsetX = touch.clientX - box.offsetLeft;
+    dragOffsetY = touch.clientY - box.offsetTop;
+  });
+
+  // Move handler (mouse)
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging) {
       const wrapperRect = canvasWrapper.getBoundingClientRect();
       let newLeft = e.clientX - dragOffsetX;
       let newTop = e.clientY - dragOffsetY;
       
-      // Allow overflow, just keep left edge in bounds
       newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
       
       box.style.left = newLeft + "px";
@@ -194,24 +219,57 @@ export function createTextbox(e: MouseEvent | Touch) {
     }
   };
 
-  const handleMouseUp = () => {
+  // Move handler (touch)
+  const handleTouchMove = (e: TouchEvent) => {
+    const touch = e.touches[0];
+    if (isDragging) {
+      e.preventDefault();
+      const wrapperRect = canvasWrapper.getBoundingClientRect();
+      let newLeft = touch.clientX - dragOffsetX;
+      let newTop = touch.clientY - dragOffsetY;
+      
+      newLeft = Math.max(-box.offsetWidth + 20, Math.min(newLeft, wrapperRect.width - 20));
+      
+      box.style.left = newLeft + "px";
+      box.style.top = newTop + "px";
+    }
+    if (isResizing) {
+      e.preventDefault();
+      const boxRect = box.getBoundingClientRect();
+      const newWidth = Math.max(60, touch.clientX - boxRect.left);
+      box.style.width = newWidth + "px";
+      autoGrow(textarea);
+    }
+  };
+
+  // End handler
+  const handleEnd = () => {
     isDragging = false;
     isResizing = false;
   };
 
   document.addEventListener("mousemove", handleMouseMove);
-  document.addEventListener("mouseup", handleMouseUp);
+  document.addEventListener("mouseup", handleEnd);
+  document.addEventListener("touchmove", handleTouchMove, { passive: false });
+  document.addEventListener("touchend", handleEnd);
 
   // Store cleanup function
   (box as any)._cleanup = () => {
     document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
+    document.removeEventListener("mouseup", handleEnd);
+    document.removeEventListener("touchmove", handleTouchMove);
+    document.removeEventListener("touchend", handleEnd);
   };
 
-  // Resizing width via right bracket
-  let isResizing = false;
-
+  // Start resize (mouse)
   rightBracket.addEventListener("mousedown", (e) => {
+    isResizing = true;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  // Start resize (touch)
+  rightBracket.addEventListener("touchstart", (e) => {
     isResizing = true;
     e.preventDefault();
     e.stopPropagation();
