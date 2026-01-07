@@ -181,11 +181,12 @@
     touchCount = e.touches.length;
 
     if (state.mode === "text") {
-      const touch = e.changedTouches[0];
       if (hasActiveTextbox()) {
+        // Just confirm, don't create new one
         confirmTextbox();
       } else {
         e.preventDefault();
+        const touch = e.changedTouches[0];
         createTextbox(touch);
       }
     }
