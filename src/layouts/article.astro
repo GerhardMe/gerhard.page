@@ -5,8 +5,8 @@ const { frontmatter } = Astro.props;
 ---
 
 <Layout>
-  <div class="size">
-    <div class="titlebox">
+  <article class="size">
+    <header class="titlebox">
       <h1 class="title">{frontmatter.title}</h1>
       <img src="/favicon.png" />
       <div class="date">
@@ -15,7 +15,7 @@ const { frontmatter } = Astro.props;
         </p>
         <a class="backBtn" href={parentPath}>back</a>
       </div>
-    </div>
+    </header>
 
     {
       frontmatter.image && (
@@ -23,14 +23,14 @@ const { frontmatter } = Astro.props;
       )
     }
 
-    <div class="article">
+    <div class="content">
       <slot />
     </div>
     <div class="center">
       <div class="bottomLine"></div>
       <a class="backBtn" href={parentPath}>back</a>
     </div>
-  </div>
+  </article>
 </Layout>
 
 <!-- ######################## CSS ######################## -->
@@ -121,7 +121,7 @@ const { frontmatter } = Astro.props;
     }
   }
 
-  .article {
+  .content {
     padding-top: 1em;
 
     line-height: 1.7;
