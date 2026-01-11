@@ -2,7 +2,8 @@
 
 // ========== CONFIGURABLE COLORS ==========
 // Color for new drawings/text
-export const DRAW_COLOR = "#ff0000";
+export const DRAW_COLOR = "#1d0014ff";
+
 // Color for loaded entries: configure INK_COLOR in backend/server.js
 // =========================================
 

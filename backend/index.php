@@ -13,13 +13,17 @@ define('CANVAS_HEIGHT', 1754);
 define('MAX_IMAGE_SIZE', 5 * 1024 * 1024); // 5MB
 
 // Ink color for displayed entries (RGB, 0-255)
-define('INK_COLOR_R', 0);
-define('INK_COLOR_G', 26);
-define('INK_COLOR_B', 255);
+define('INK_COLOR_R', 29);
+define('INK_COLOR_G', 0);
+define('INK_COLOR_B', 20);
 
 // Page fullness threshold (0.0 - 1.0)
 // When a page exceeds this, a new page becomes available
 define('PAGE_FULL_THRESHOLD', 0.15); // 15% coverage = page is "full"
+
+// Layer opacity (0.0 - 1.0)
+// How transparent each submission appears when composited
+define('LAYER_OPACITY', 0.6); // 80% opacity per layer
 // ====================================
 
 // Ensure GD is available
@@ -103,7 +107,7 @@ function colorize(GdImage $img): GdImage {
             // Convert GD alpha (0-127) to opacity (0-1), apply gray intensity, convert back
             $opacity = (127 - $originalAlpha) / 127;
             $intensity = (255 - $gray) / 255;
-            $finalOpacity = $opacity * $intensity;
+            $finalOpacity = $opacity * $intensity * LAYER_OPACITY;
             $finalAlpha = (int)(127 - ($finalOpacity * 127));
 
             $color = imagecolorallocatealpha(
