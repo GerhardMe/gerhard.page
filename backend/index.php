@@ -16,6 +16,10 @@ define('MAX_IMAGE_SIZE', 5 * 1024 * 1024); // 5MB
 define('INK_COLOR_R', 0);
 define('INK_COLOR_G', 26);
 define('INK_COLOR_B', 255);
+
+// Page fullness threshold (0.0 - 1.0)
+// When a page exceeds this, a new page becomes available
+define('PAGE_FULL_THRESHOLD', 0.15); // 15% coverage = page is "full"
 // ====================================
 
 // Ensure GD is available
@@ -341,10 +345,146 @@ function handlePost(): void {
     echo 'OK';
 }
 
+// Build head for a page (used when head doesn't exist)
+function buildHead(string $pageDir): ?string {
+    $layers = getAllLayers($pageDir);
+    if (empty($layers)) {
+        return null;
+    }
+
+    $composite = createBlankImage();
+    $latestTimestamp = 0;
+
+    foreach ($layers as $file) {
+        $layer = @imagecreatefrompng($file);
+        if (!$layer) {
+            continue;
+        }
+
+        imagesavealpha($layer, true);
+        $colored = colorize($layer);
+        imagedestroy($layer);
+
+        compositeOver($composite, $colored);
+        imagedestroy($colored);
+
+        if (preg_match('/^(\d+)_/', basename($file), $matches)) {
+            $latestTimestamp = max($latestTimestamp, (int)$matches[1]);
+        }
+    }
+
+    if ($latestTimestamp > 0) {
+        $headFile = $pageDir . '/head_' . $latestTimestamp . '.png';
+        imagesavealpha($composite, true);
+        imagepng($composite, $headFile);
+        imagedestroy($composite);
+        return $headFile;
+    }
+
+    imagedestroy($composite);
+    return null;
+}
+
+// Calculate page usage (0.0 - 1.0) by sampling pixels
+function getPageUsage(int $page): float {
+    $pageDir = DATA_DIR . '/' . $page;
+
+    if (!is_dir($pageDir)) {
+        return 0.0;
+    }
+
+    // Try to use head file for fast calculation
+    $headInfo = getHeadInfo($pageDir);
+    if (!$headInfo) {
+        // No head - check if layers exist and build head
+        $layers = getAllLayers($pageDir);
+        if (empty($layers)) {
+            return 0.0;
+        }
+        // Build the head now
+        $headFile = buildHead($pageDir);
+        if (!$headFile) {
+            return 0.0;
+        }
+        $headInfo = ['file' => $headFile];
+    }
+
+    // Load head and sample pixels
+    $img = @imagecreatefrompng($headInfo['file']);
+    if (!$img) {
+        return 0.0;
+    }
+
+    $width = imagesx($img);
+    $height = imagesy($img);
+
+    // Sample every 10th pixel for speed
+    $sampleStep = 10;
+    $sampledPixels = 0;
+    $nonTransparentPixels = 0;
+
+    for ($y = 0; $y < $height; $y += $sampleStep) {
+        for ($x = 0; $x < $width; $x += $sampleStep) {
+            $rgba = imagecolorat($img, $x, $y);
+            $alpha = ($rgba >> 24) & 0x7F;
+            // Count pixels that are not fully transparent
+            if ($alpha < 127) {
+                $nonTransparentPixels++;
+            }
+            $sampledPixels++;
+        }
+    }
+
+    imagedestroy($img);
+
+    if ($sampledPixels === 0) {
+        return 0.0;
+    }
+
+    return $nonTransparentPixels / $sampledPixels;
+}
+
+// Get total number of available pages
+function getTotalPages(): int {
+    // Start with at least 1 page
+    $totalPages = 1;
+
+    // Find existing page directories
+    if (is_dir(DATA_DIR)) {
+        $dirs = glob(DATA_DIR . '/*', GLOB_ONLYDIR);
+        foreach ($dirs as $dir) {
+            $pageNum = (int)basename($dir);
+            if ($pageNum > 0) {
+                $totalPages = max($totalPages, $pageNum);
+            }
+        }
+    }
+
+    // Check if the last page is full enough to warrant a new one
+    $lastPageUsage = getPageUsage($totalPages);
+    if ($lastPageUsage >= PAGE_FULL_THRESHOLD) {
+        $totalPages++;
+    }
+
+    return $totalPages;
+}
+
+// Handle GET /api/guestbook/info - return page count
+function handleGetInfo(): void {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'pages' => getTotalPages()
+    ]);
+}
+
 // Router
 $method = $_SERVER['REQUEST_METHOD'];
+$path = $_SERVER['REQUEST_URI'] ?? '';
 
-if ($method === 'GET') {
+// Check for /info endpoint
+if ($method === 'GET' && (str_contains($path, '/info') || ($_GET['action'] ?? '') === 'info')) {
+    handleGetInfo();
+} elseif ($method === 'GET') {
     handleGet();
 } elseif ($method === 'POST') {
     handlePost();

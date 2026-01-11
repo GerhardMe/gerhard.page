@@ -6,7 +6,8 @@ export const DRAW_COLOR = "#ff0000";
 // Color for loaded entries: configure INK_COLOR in backend/server.js
 // =========================================
 
-export const TOTAL_PAGES = 10;
+// Dynamic page count (fetched from backend)
+export let totalPages = 1;
 
 // Status types for page indicator
 export type Status =
@@ -86,7 +87,7 @@ export function setFontSize(size: number) {
 }
 
 export function setPage(page: number) {
-  if (page >= 1 && page <= TOTAL_PAGES) {
+  if (page >= 1 && page <= totalPages) {
     state.currentPage = page;
     notify();
   }
@@ -94,6 +95,11 @@ export function setPage(page: number) {
 
 export function setStatus(status: Status) {
   state.status = status;
+  notify();
+}
+
+export function setTotalPages(pages: number) {
+  totalPages = Math.max(1, pages);
   notify();
 }
 

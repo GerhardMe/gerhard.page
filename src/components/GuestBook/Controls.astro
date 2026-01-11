@@ -37,11 +37,12 @@ const { position } = Astro.props;
     setBrushSize,
     setFontSize,
     setStatus,
+    setTotalPages,
     undo,
     nextPage,
     prevPage,
     clearActions,
-    TOTAL_PAGES,
+    totalPages,
   } from "./state";
 
   const API_URL = "/api/guestbook";
@@ -85,7 +86,7 @@ const { position } = Astro.props;
           case "error":
             return state.status.message;
           case "ready":
-            return `${state.currentPage} / ${TOTAL_PAGES}`;
+            return `${state.currentPage} / ${totalPages}`;
         }
       }
 
@@ -115,7 +116,7 @@ const { position } = Astro.props;
         const isLoading = state.status.type === "fetching" || state.status.type === "sending";
         prevBtns.forEach((btn) => (btn.disabled = state.currentPage <= 1 || isLoading));
         nextBtns.forEach(
-          (btn) => (btn.disabled = state.currentPage >= TOTAL_PAGES || isLoading)
+          (btn) => (btn.disabled = state.currentPage >= totalPages || isLoading)
         );
       }
 
@@ -221,6 +222,8 @@ const { position } = Astro.props;
             if (response.ok) {
               // Reload guestbook first (keeps drawing visible during load)
               await gb?.loadGuestbook();
+              // Refresh page count (new page may be available)
+              await gb?.fetchPageCount();
               // Then clear the drawing layer
               clearActions();
               gb?.redrawActions();

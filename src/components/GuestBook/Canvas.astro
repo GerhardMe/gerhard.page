@@ -55,7 +55,7 @@
     setFontSize as setTextboxFontSize,
     drawTextAction,
   } from "./textbox";
-  import { state, subscribe, clearActions, setStatus } from "./state";
+  import { state, subscribe, clearActions, setStatus, setTotalPages } from "./state";
 
   const API_URL = "/api/guestbook";
 
@@ -85,7 +85,7 @@
     };
   }
 
-  function initCanvases() {
+  async function initCanvases() {
     guestbookCanvas.width = state.canvasWidth;
     guestbookCanvas.height = state.canvasHeight;
     drawingCanvas.width = state.canvasWidth;
@@ -105,10 +105,24 @@
     setTextboxFontSize(state.fontSize);
     (window as any).guestbookMode = state.mode;
 
-    loadGuestbook();
+    // Fetch page count first, then load guestbook
+    await fetchPageCount();
+    await loadGuestbook();
   }
 
   const FETCH_TIMEOUT = 15000; // 15 seconds
+
+  async function fetchPageCount() {
+    try {
+      const response = await fetch(`${API_URL}?action=info`);
+      if (response.ok) {
+        const data = await response.json();
+        setTotalPages(data.pages || 1);
+      }
+    } catch (e) {
+      console.error("Failed to fetch page count:", e);
+    }
+  }
 
   async function loadGuestbook() {
     setStatus({ type: "fetching" });
@@ -260,6 +274,7 @@
   // Expose functions for controls
   (window as any).guestbook = {
     loadGuestbook,
+    fetchPageCount,
     clearDrawing: () => {
       drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
       clearActions();
