@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "Starting Astro dev server on http://localhost:4321"
+pnpm dev

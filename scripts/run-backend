@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "Starting PHP backend on http://localhost:3001"
+php -S localhost:3001 -t backend

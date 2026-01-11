@@ -8,6 +8,14 @@ export const DRAW_COLOR = "#ff0000";
 
 export const TOTAL_PAGES = 10;
 
+// Status types for page indicator
+export type Status =
+  | { type: "initializing" }
+  | { type: "fetching" }
+  | { type: "ready" }
+  | { type: "sending" }
+  | { type: "error"; message: string };
+
 export type StrokeAction = {
   type: "stroke";
   points: { x: number; y: number }[];
@@ -33,6 +41,7 @@ export const state = {
   brushSize: 3,
   fontSize: 24,
   currentPage: 1,
+  status: { type: "initializing" } as Status,
   drawingCtx: null as CanvasRenderingContext2D | null,
   guestbookCtx: null as CanvasRenderingContext2D | null,
   canvasWidth: 1240,
@@ -81,6 +90,11 @@ export function setPage(page: number) {
     state.currentPage = page;
     notify();
   }
+}
+
+export function setStatus(status: Status) {
+  state.status = status;
+  notify();
 }
 
 export function nextPage() {

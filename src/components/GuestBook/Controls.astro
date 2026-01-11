@@ -12,7 +12,6 @@ const { position } = Astro.props;
   <ControlBar />
 </div>
 
-{position === "top" && <span id="status" />}
 
 <style>
   .controls-bar {
@@ -28,14 +27,6 @@ const { position } = Astro.props;
   .controls-bar.bottom {
     margin-top: 1em;
   }
-
-  #status {
-    display: block;
-    min-height: 1.2em;
-    font-size: 0.9em;
-    color: #666;
-    text-align: center;
-  }
 </style>
 
 <script>
@@ -45,6 +36,7 @@ const { position } = Astro.props;
     setMode,
     setBrushSize,
     setFontSize,
+    setStatus,
     undo,
     nextPage,
     prevPage,
@@ -81,7 +73,21 @@ const { position } = Astro.props;
         document.querySelectorAll<HTMLButtonElement>(".next-page");
       const pageIndicators =
         document.querySelectorAll<HTMLSpanElement>(".page-indicator");
-      const statusEl = document.getElementById("status")!;
+
+      function getStatusText(): string {
+        switch (state.status.type) {
+          case "initializing":
+            return "Initializing...";
+          case "fetching":
+            return "Fetching guestbook...";
+          case "sending":
+            return "Sending update...";
+          case "error":
+            return state.status.message;
+          case "ready":
+            return `${state.currentPage} / ${TOTAL_PAGES}`;
+        }
+      }
 
       function updateUI() {
         drawModeBtns.forEach((btn) =>
@@ -103,11 +109,13 @@ const { position } = Astro.props;
           (span) => (span.textContent = `${state.fontSize}pt`)
         );
         pageIndicators.forEach(
-          (span) => (span.textContent = `${state.currentPage} / ${TOTAL_PAGES}`)
+          (span) => (span.textContent = getStatusText())
         );
-        prevBtns.forEach((btn) => (btn.disabled = state.currentPage <= 1));
+        // Disable nav during loading/sending
+        const isLoading = state.status.type === "fetching" || state.status.type === "sending";
+        prevBtns.forEach((btn) => (btn.disabled = state.currentPage <= 1 || isLoading));
         nextBtns.forEach(
-          (btn) => (btn.disabled = state.currentPage >= TOTAL_PAGES)
+          (btn) => (btn.disabled = state.currentPage >= TOTAL_PAGES || isLoading)
         );
       }
 
@@ -157,26 +165,26 @@ const { position } = Astro.props;
 
       // Pagination
       prevBtns.forEach((btn) => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           const gb = (window as any).guestbook;
           if (gb?.hasActiveTextbox()) {
             gb.confirmTextbox();
           }
           prevPage();
           gb?.redrawActions();
-          gb?.loadGuestbook();
+          await gb?.loadGuestbook();
         });
       });
 
       nextBtns.forEach((btn) => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           const gb = (window as any).guestbook;
           if (gb?.hasActiveTextbox()) {
             gb.confirmTextbox();
           }
           nextPage();
           gb?.redrawActions();
-          gb?.loadGuestbook();
+          await gb?.loadGuestbook();
         });
       });
 
@@ -191,11 +199,12 @@ const { position } = Astro.props;
 
           // Check if there's anything to send on current page
           if (state.actions.length === 0) {
-            statusEl.textContent = "Nothing to send";
+            setStatus({ type: "error", message: "Nothing to send" });
+            setTimeout(() => setStatus({ type: "ready" }), 2000);
             return;
           }
 
-          statusEl.textContent = "Submitting...";
+          setStatus({ type: "sending" });
 
           const imageData = gb?.getImageData();
 
@@ -210,16 +219,17 @@ const { position } = Astro.props;
             });
 
             if (response.ok) {
-              statusEl.textContent = "Added!";
-              // Only clear current page's drawing
+              // Reload guestbook first (keeps drawing visible during load)
+              await gb?.loadGuestbook();
+              // Then clear the drawing layer
               clearActions();
               gb?.redrawActions();
-              await gb?.loadGuestbook();
             } else {
               throw new Error("Server error");
             }
           } catch (e) {
-            statusEl.textContent = "Error submitting";
+            setStatus({ type: "error", message: "Error submitting" });
+            setTimeout(() => setStatus({ type: "ready" }), 3000);
           }
         });
       });

@@ -2,7 +2,7 @@
 
 ---
 
-<div class="canvas-wrapper" id="canvas-wrapper">
+<div class="canvas-wrapper hidden" id="canvas-wrapper">
   <canvas id="guestbook-canvas"></canvas>
   <canvas id="drawing-canvas"></canvas>
 </div>
@@ -12,6 +12,10 @@
     position: relative;
     width: 100%;
     aspect-ratio: 1 / 1.4142;
+  }
+
+  .canvas-wrapper.hidden {
+    visibility: hidden;
   }
 
   #guestbook-canvas,
@@ -51,7 +55,7 @@
     setFontSize as setTextboxFontSize,
     drawTextAction,
   } from "./textbox";
-  import { state, subscribe, clearActions } from "./state";
+  import { state, subscribe, clearActions, setStatus } from "./state";
 
   const API_URL = "/api/guestbook";
 
@@ -104,30 +108,61 @@
     loadGuestbook();
   }
 
+  const FETCH_TIMEOUT = 15000; // 15 seconds
+
   async function loadGuestbook() {
-    // Clear the guestbook canvas with paper color
-    guestbookCtx.fillStyle = "#fcfaf6";
-    guestbookCtx.fillRect(0, 0, guestbookCanvas.width, guestbookCanvas.height);
+    setStatus({ type: "fetching" });
 
     try {
-      const response = await fetch(`${API_URL}?page=${state.currentPage}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+      const response = await fetch(`${API_URL}?page=${state.currentPage}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const blob = await response.blob();
         const img = new Image();
-        img.onload = () => {
-          // Draw the pre-colorized image from backend
-          guestbookCtx.drawImage(
-            img,
-            0,
-            0,
-            guestbookCanvas.width,
-            guestbookCanvas.height
-          );
-        };
-        img.src = URL.createObjectURL(blob);
+
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            // Clear and draw in one go - no flicker
+            guestbookCtx.fillStyle = "#fcfaf6";
+            guestbookCtx.fillRect(0, 0, guestbookCanvas.width, guestbookCanvas.height);
+            guestbookCtx.drawImage(
+              img,
+              0,
+              0,
+              guestbookCanvas.width,
+              guestbookCanvas.height
+            );
+            // Reveal canvas on first load
+            canvasWrapper.classList.remove("hidden");
+            resolve();
+          };
+          img.onerror = reject;
+          img.src = URL.createObjectURL(blob);
+        });
+
+        setStatus({ type: "ready" });
+      } else {
+        throw new Error("Server error");
       }
     } catch (e) {
-      console.log("No existing guestbook page yet");
+      if (e instanceof Error && e.name === "AbortError") {
+        setStatus({ type: "error", message: "Timeout - try again" });
+      } else {
+        setStatus({ type: "error", message: "Failed to load" });
+      }
+      console.error("Error loading guestbook:", e);
+      // Auto-recover to ready state after showing error
+      setTimeout(() => {
+        if (state.status.type === "error") {
+          setStatus({ type: "ready" });
+        }
+      }, 3000);
     }
   }
 

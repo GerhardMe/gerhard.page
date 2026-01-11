@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+echo "Starting frontend (4321) + backend (3001)..."
+php -S localhost:3001 -t backend &
+BACKEND_PID=$!
+trap "kill $BACKEND_PID 2>/dev/null" EXIT
+pnpm dev
