@@ -1,121 +1,129 @@
 ---
-import { Image } from 'astro:assets';
+import { Image } from "astro:assets";
 
 const { post } = Astro.props;
 
 function fm(p: any) {
-    return p.frontmatter ?? p.data ?? {};
+  return p.frontmatter ?? p.data ?? {};
 }
 
 function fmtDate(d: string | Date) {
-    try {
-        return new Date(d).toLocaleDateString("en-GB");
-    } catch {
-        return String(d ?? "");
-    }
+  try {
+    return new Date(d).toLocaleDateString("en-GB");
+  } catch {
+    return String(d ?? "");
+  }
 }
 
 function stars(n: any) {
-    const v = Math.max(0, Math.min(5, Number(n) || 0));
-    return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
+  const v = Math.max(0, Math.min(5, Number(n) || 0));
+  return "★★★★★☆☆☆☆☆".slice(5 - v, 10 - v);
 }
 
 // Import all cover images
-const images = import.meta.glob('/src/assets/covers/*.{png,jpg,jpeg,webp,avif}', { eager: true });
+const images = import.meta.glob(
+  "/src/assets/covers/*.{png,jpg,jpeg,webp,avif}",
+  { eager: true }
+);
 
 const f = fm(post);
 
 // Match cover filename to imported image
 const coverFilename = f.cover;
 const coverKey = coverFilename ? `/src/assets/covers/${coverFilename}` : null;
-const coverImage = coverKey && images[coverKey] ? images[coverKey].default : null;
+const coverImage =
+  coverKey && images[coverKey] ? images[coverKey].default : null;
 ---
 
 <a href={post.url} class="book-item">
-    <div class="left">
-        {coverImage ? (
-            <Image
-                src={coverImage}
-                alt={`Cover of ${f.title}`}
-                width={60}
-                height={90}
-                class="cover"
-                loading="lazy"
-            />
-        ) : (
-            <div class="cover cover-placeholder"></div>
-        )}
-        <div class="info">
-            <div class="book-title">{f.title ?? post.slug ?? post.id}</div>
-            <div class="author">by {f.author}</div>
-            <div class="year">({f.year})</div>
-        </div>
+  <div class="left">
+    {
+      coverImage ? (
+        <Image
+          src={coverImage}
+          alt={`Cover of ${f.title}`}
+          width={60}
+          height={90}
+          class="cover"
+          loading="lazy"
+        />
+      ) : (
+        <div class="cover cover-placeholder" />
+      )
+    }
+    <div class="info">
+      <div class="book-title">{f.title ?? post.slug ?? post.id}</div>
+      <div class="author">by {f.author}</div>
+      <div class="year">({f.year})</div>
     </div>
-    <div class="right">
-        <div class="read">read: {fmtDate(f.read)}</div>
-        <div class="rating">{stars(f.rating)}</div>
-    </div>
+  </div>
+  <div class="right">
+    <div class="read">read: {fmtDate(f.read)}</div>
+    <div class="rating">{stars(f.rating)}</div>
+  </div>
 </a>
 
 <style>
-    .book-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 0.5em;
-    }
+  .book-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5em;
+  }
 
-    .book-item:hover .book-title {
-        text-decoration: underline;
-    }
+  .book-item:hover .book-title {
+    text-decoration: underline;
+  }
 
-    .left {
-        display: flex;
-    }
+  .left {
+    display: flex;
+  }
 
-    .right {
-        display: flex;
-        flex-direction: column;
-        padding-left: 0.5em;
-        padding-right: 0.5em;
-    }
+  .right {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+  }
 
-    .cover {
-        min-height: 82px;
-        width: 60px;
-        border-radius: 1px;
-        background: var(--color-backdrop);
-    }
+  .cover {
+    min-height: 82px;
+    width: 60px;
+    border-radius: 1px;
+    background: var(--color-backdrop);
+  }
 
-    .info {
-        display: flex;
-        flex-direction: column;
-        padding-left: 0.5em;
-        padding-right: 0.5em;
-    }
+  .info {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+  }
 
-    .book-title {
-        font-weight: bold;
-        color: var(--color-accent);
-    }
+  .book-title {
+    font-weight: bold;
+    color: var(--color-accent);
 
-    .author {
-        font-size: 0.9em;
-        color: var(--color-bg-dark);
-    }
+    font-family: "Times New Roman", Times, serif;
+  }
 
-    .year {
-        font-size: 0.9em;
-        color: var(--color-bg-dark);
-    }
+  .author {
+    font-size: 0.9em;
+    color: var(--color-bg-dark);
+  }
 
-    .read {
-        font-size: 0.9em;
-        color: var(--color-bg-dark);
-    }
+  .year {
+    font-size: 0.9em;
+    color: var(--color-bg-dark);
+  }
 
-    .rating {
-        color: var(--color-gold);
-        text-shadow: 0 0 0.1em var(--color-shadow);
-        text-align: right;
-    }
+  .read {
+    font-size: 0.9em;
+    color: var(--color-bg-dark);
+  }
+
+  .rating {
+    color: var(--color-gold);
+    text-shadow: 0 0 0.1em var(--color-shadow);
+    text-align: right;
+  }
 </style>
