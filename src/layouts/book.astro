@@ -2,6 +2,7 @@
 import { Image } from "astro:assets";
 import Layout from "./default.astro";
 
+const parentPath = Astro.url.pathname.replace(/\/[^/]+\/[^/]+\/?$/, "/");
 const { frontmatter } = Astro.props;
 
 // Import all cover images
@@ -71,6 +72,7 @@ const goodreadsLink = frontmatter.isbn
     <div class="content">
       <slot />
     </div>
+    <a class="backBtn" href={parentPath}>back</a>
   </article>
 </Layout>
 
@@ -160,6 +162,8 @@ const goodreadsLink = frontmatter.isbn
 
   .content {
     line-height: 1.75;
+
+    margin-bottom: 1em;
   }
 
   .content :global(h1),
@@ -187,6 +191,10 @@ const goodreadsLink = frontmatter.isbn
     text-decoration: underline;
   }
 
+  .backBtn {
+    display: none;
+  }
+
   @media (max-width: 650px) {
     .top {
       flex-direction: column;
@@ -195,6 +203,22 @@ const goodreadsLink = frontmatter.isbn
 
     .right {
       margin: auto;
+    }
+
+    .backBtn {
+      font-family: "Times New Roman", Times, serif;
+
+      cursor: pointer;
+      color: var(--color-text-link);
+      font-size: 0.9em;
+
+      display: block;
+      width: fit-content;
+      margin: auto;
+
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 </style>
