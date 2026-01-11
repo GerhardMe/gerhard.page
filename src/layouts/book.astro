@@ -48,12 +48,16 @@ const goodreadsLink = frontmatter.isbn
       </header>
 
       <div class="right">
-        <Image
-          src={coverImage}
-          alt={`Cover of ${frontmatter.title}`}
-          width={200}
-          class="cover"
-        />
+        {coverImage ? (
+          <Image
+            src={coverImage}
+            alt={`Cover of ${frontmatter.title}`}
+            width={200}
+            class="cover"
+          />
+        ) : (
+          <div class="cover cover-placeholder"></div>
+        )}
 
         <div class="info">
           <p class="read">
