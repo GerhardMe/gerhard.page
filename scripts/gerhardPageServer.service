@@ -1,0 +1,15 @@
+[Unit]
+Description=Guestbook PHP backend - gerhard.page
+After=network.target
+
+[Service]
+Type=simple
+User=server
+Group=server
+WorkingDirectory=/home/server/gerhardPage/gergus3/backend
+ExecStart=/usr/bin/php -S 0.0.0.0:3001 index.php
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

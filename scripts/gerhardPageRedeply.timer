@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic check for updates to gerhard.page
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=gerhardPageRedeploy.service
+
+[Install]
+WantedBy=timers.target

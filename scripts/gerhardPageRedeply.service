@@ -1,0 +1,8 @@
+[Unit]
+Description=Redeploy Astro site if git changed
+
+[Service]
+Type=oneshot
+User=server
+WorkingDirectory=/home/server/gerhardPage
+ExecStart=/home/server/gerhardPage/redeploy.sh
