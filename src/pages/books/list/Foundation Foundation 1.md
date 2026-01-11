@@ -1,5 +1,5 @@
 ---
-title: Foundation (Foundation, #1)
+title: Foundation
 author: Isaac Asimov
 read: 2020-06-06
 year: 1951

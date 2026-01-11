@@ -1,5 +1,5 @@
 ---
-title: The Hobbit, or There and Back Again
+title: The Hobbit
 author: J.R.R. Tolkien
 read: 2020-06-06
 year: 1937

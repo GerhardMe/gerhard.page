@@ -1,5 +1,5 @@
 ---
-title: The Christmas Mystery
+title: Julemysteriet
 author: Jostein Gaarder
 read: 2020-06-06
 year: 1992

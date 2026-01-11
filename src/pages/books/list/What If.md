@@ -1,5 +1,5 @@
 ---
-title: "What If?: Serious Scientific Answers to Absurd Hypothetical Questions"
+title: What If?
 author: Randall Munroe
 read: 2020-06-06
 year: 2014

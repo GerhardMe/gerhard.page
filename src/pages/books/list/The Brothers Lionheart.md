@@ -1,5 +1,5 @@
 ---
-title: The Brothers Lionheart
+title: Brødrene løvehjerte
 author: Astrid Lindgren
 read: 2020-07-17
 year: 1973

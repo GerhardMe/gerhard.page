@@ -1,5 +1,5 @@
 ---
-title: The Dark Forest (Remembrance of Earth’s Past, #2)
+title: Dark Forest
 author: Cixin Liu
 read: 2020-07-12
 year: 2008

@@ -1,5 +1,5 @@
 ---
-title: Watership Down (Watership Down, #1)
+title: Watership Down
 author: Richard Adams
 read: 2025-07-15
 year: 1972

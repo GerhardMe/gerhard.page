@@ -1,5 +1,5 @@
 ---
-title: The Name of the Wind (The Kingkiller Chronicle, #1)
+title: The Name of the Wind
 author: Patrick Rothfuss
 read: 2020-06-06
 year: 2007

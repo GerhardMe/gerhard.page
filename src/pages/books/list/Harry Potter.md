@@ -1,5 +1,5 @@
 ---
-title: Harry Potter and the Sorcerer's Stone (Harry Potter, #1)
+title: Harry Potter (Series)
 author: J.K. Rowling
 read: null
 year: 1997

@@ -1,5 +1,5 @@
 ---
-title: "Identity: The Demand for Dignity and the Politics of Resentment"
+title: Identity
 author: Francis Fukuyama
 read: 2024-05-04
 year: 2018

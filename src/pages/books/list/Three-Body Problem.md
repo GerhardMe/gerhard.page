@@ -1,5 +1,5 @@
 ---
-title: The Three-Body Problem (Remembrance of Earth’s Past, #1)
+title: Three-Body Problem
 author: Cixin Liu
 read: 2020-07-07
 year: 2006

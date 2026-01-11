@@ -1,5 +1,5 @@
 ---
-title: The Way of Kings (The Stormlight Archive, #1)
+title: The Stormlight Archive (Series)
 author: Brandon Sanderson
 read: 2020-06-06
 year: 2010

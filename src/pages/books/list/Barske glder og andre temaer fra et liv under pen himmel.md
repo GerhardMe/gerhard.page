@@ -1,5 +1,5 @@
 ---
-title: Barske glæder og andre temaer fra et liv under åpen himmel
+title: Barske glæder
 author: Peter Wessel Zapffe
 read: 2020-06-06
 year: 1969

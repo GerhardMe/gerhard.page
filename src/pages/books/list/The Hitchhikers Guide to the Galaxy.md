@@ -1,5 +1,5 @@
 ---
-title: The Hitchhiker’s Guide to the Galaxy (The Hitchhiker's Guide to the Galaxy, #1)
+title: The Hitchhiker’s Guide to the Galaxy
 author: Douglas Adams
 read: 2020-06-06
 year: 1979
