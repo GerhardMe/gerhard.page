@@ -1,10 +1,12 @@
 ---
+layout: ../../../layouts/book.astro
 title: Mengele Zoo
 author: Gert Nygårdshaug
 read: 2025-08-08
 year: 1989
-rating:
+rating: 3
 favorite: false
-cover: /covers/mengele-zoo-mino-series-1.jpg
+cover: mengele_zoo.jpg
 isbn: ""
+blurb: ""
 ---
