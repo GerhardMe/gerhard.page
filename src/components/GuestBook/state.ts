@@ -1,9 +1,10 @@
 // Shared state between guestbook components
 
-// ========== CONFIGURABLE COLOR ==========
-// Change this to set the color for all drawing and text
-export const DRAW_COLOR = "#222222";
-// ========================================
+// ========== CONFIGURABLE COLORS ==========
+// Color for new drawings/text
+export const DRAW_COLOR = "#ff0000";
+// Color for loaded entries: configure INK_COLOR in backend/server.js
+// =========================================
 
 export const TOTAL_PAGES = 10;
 
