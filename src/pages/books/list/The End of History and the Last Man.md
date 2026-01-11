@@ -8,5 +8,5 @@ rating: 5
 favorite: false
 cover: the_end_of_history_and_the_last_man.jpg
 isbn: "9780743284554"
-blurb: A political philosophy work arguing that liberal democracy represents the endpoint of humanity's sociocultural evolution and the final form of human government, written after the end of the Cold War.
+blurb: The End of History and the Last Man is a 1992 book of political philosophy by American political scientist Francis Fukuyama which argues that with the ascendancy of Western liberal democracy—which occurred after the Cold War (1945–1991) and the dissolution of the Soviet Union - humanity has reached the end of history. That is, the end-point of mankind's ideological evolution and the universalization of Western liberal democracy as the final form of human government.
 ---

@@ -48,16 +48,18 @@ const goodreadsLink = frontmatter.isbn
       </header>
 
       <div class="right">
-        {coverImage ? (
-          <Image
-            src={coverImage}
-            alt={`Cover of ${frontmatter.title}`}
-            width={200}
-            class="cover"
-          />
-        ) : (
-          <div class="cover cover-placeholder"></div>
-        )}
+        {
+          coverImage ? (
+            <Image
+              src={coverImage}
+              alt={`Cover of ${frontmatter.title}`}
+              width={200}
+              class="cover"
+            />
+          ) : (
+            <div class="cover cover-placeholder" />
+          )
+        }
 
         <div class="info">
           <p class="read">
@@ -96,6 +98,10 @@ const goodreadsLink = frontmatter.isbn
     padding-bottom: 1.5em;
     margin-bottom: 2em;
     border-bottom: 1px solid var(--color-backdrop);
+  }
+
+  header {
+    flex-grow: 1;
   }
 
   .title {
@@ -238,6 +244,11 @@ const goodreadsLink = frontmatter.isbn
       display: block;
       width: fit-content;
       margin: auto;
+    }
+
+    .info {
+      width: 100%;
+      text-align: center;
     }
   }
 </style>

@@ -8,5 +8,5 @@ rating: 5
 favorite: false
 cover: flowers_for_algernon.jpg
 isbn: "9780156030304"
-blurb: A science fiction novel told through progress reports of Charlie Gordon, a man with an IQ of 68 who undergoes experimental surgery to increase his intelligence, exploring themes of identity, consciousness, and what it means to be human.
+blurb: Charlie Gordon is about to embark upon an unprecedented journey. Born with an unusually low IQ, he has been chosen as the perfect subject for an experimental surgery that researchers hope will increase his intelligence – a procedure that has already been highly successful when tested on a lab mouse named Algernon. As the treatment takes effect, Charlie's intelligence expands until it surpasses that of the doctors who engineered his metamorphosis. The experiment appears to be a scientific breakthrough of paramount importance.
 ---
