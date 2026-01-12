@@ -7,6 +7,6 @@ year: 1973
 rating: 5
 favorite: false
 cover: the_ones_who_walk_away_from_omelas.jpg
-isbn: ""
-blurb: A philosophical short story about a utopian city whose happiness depends on the suffering of one child, exploring themes of ethics, sacrifice, and the price of happiness.
+isbn: "9780886825010"
+blurb: The Ones Who Walk Away from Omelas is a 1973 short work of philosophical fiction by American writer Ursula K. Le Guin. With deliberately both vague and vivid descriptions, the narrator depicts a summer festival in the utopian city of Omelas, whose prosperity depends on the perpetual misery of a single child. "The Ones Who Walk Away from Omelas" was nominated for the Locus Award for Best Short Fiction in 1974 and won the Hugo Award for Best Short Story in 1974.
 ---
