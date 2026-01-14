@@ -8,7 +8,7 @@ rating: 4
 favorite: false
 cover: something_deeply_hidden.jpg
 isbn: "9781524743017"
-blurb: Something Deeply Hidden is a non-fiction book by American theoretical physicist Sean M. Carroll. In the book, Carroll examines the reasons why people misunderstand quantum mechanics and advocates a version of the many-worlds interpretation. In the book**,** he also presents counters to other interpretations of quantum mechanics**,** and spells out the history of quantum mechanics. The book concludes with discussing how spacetime may emerge from quantum mechanics itself.
+blurb: Something Deeply Hidden is a non-fiction book by American theoretical physicist Sean M. Carroll. In the book, Carroll examines the reasons why people misunderstand quantum mechanics and advocates a version of the many-worlds interpretation. In the book, he also presents counters to other interpretations of quantum mechanics, and spells out the history of quantum mechanics. The book concludes with discussing how spacetime may emerge from quantum mechanics itself.
 ---
 
 ### Review
