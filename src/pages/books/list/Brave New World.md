@@ -2,7 +2,7 @@
 layout: ../../../layouts/book.astro
 title: Brave New World
 author: Aldous Huxley
-read: 2022-05-23
+read: 2020-06-06
 year: 1932
 rating: 5
 favorite: true
