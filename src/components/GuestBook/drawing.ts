@@ -5,26 +5,36 @@ import { addAction, state, DRAW_COLOR } from "./state.ts";
 let isDrawing = false;
 let brushSize = 3;
 let ctx: CanvasRenderingContext2D;
-let getCoords: (e: MouseEvent | Touch) => { x: number; y: number };
+let getCoords: (e: { clientX: number; clientY: number }) => { x: number; y: number };
 let currentStroke: { x: number; y: number }[] = [];
 let currentBrushSize = 3;
+// The single pointer currently drawing. Any other pointer that arrives while
+// this is set (e.g. a second finger) is ignored so the browser can pinch/pan.
+let activePointerId: number | null = null;
 
 export function initDrawing(
   canvas: HTMLCanvasElement,
   context: CanvasRenderingContext2D,
-  coordsFn: (e: MouseEvent | Touch) => { x: number; y: number }
+  coordsFn: (e: { clientX: number; clientY: number }) => { x: number; y: number }
 ) {
   ctx = context;
   getCoords = coordsFn;
 
-  canvas.addEventListener("mousedown", handleMouseDown);
-  canvas.addEventListener("mousemove", handleMouseMove);
-  canvas.addEventListener("mouseup", handleMouseUp);
-  canvas.addEventListener("mouseleave", handleMouseUp);
+  // Pointer events cover mouse, touch and pen with one code path.
+  // No preventDefault anywhere: the canvas has `touch-action: pinch-zoom`,
+  // so single-finger gestures reach us as pointer events while two-finger
+  // gestures are taken by the browser (which fires pointercancel on ours).
+  canvas.addEventListener("pointerdown", handlePointerDown);
+  canvas.addEventListener("pointermove", handlePointerMove);
+  canvas.addEventListener("pointerup", handlePointerUp);
+  canvas.addEventListener("pointercancel", handlePointerCancel);
+}
 
-  canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
-  canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
-  canvas.addEventListener("touchend", handleTouchEnd);
+function applyStrokeStyle(size: number) {
+  ctx.lineWidth = size;
+  ctx.strokeStyle = DRAW_COLOR;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 }
 
 function startStroke(x: number, y: number) {
@@ -37,9 +47,7 @@ function startStroke(x: number, y: number) {
 
 function continueStroke(x: number, y: number) {
   currentStroke.push({ x, y });
-  ctx.lineWidth = brushSize;
-  ctx.strokeStyle = DRAW_COLOR;
-  ctx.lineCap = "round";
+  applyStrokeStyle(currentBrushSize);
   ctx.lineTo(x, y);
   ctx.stroke();
   ctx.beginPath();
@@ -47,7 +55,13 @@ function continueStroke(x: number, y: number) {
 }
 
 function endStroke() {
-  if (isDrawing && currentStroke.length > 1) {
+  if (isDrawing) {
+    // A tap with no movement becomes a dot: duplicate the point (with a
+    // tiny offset so every canvas renders the round cap).
+    if (currentStroke.length === 1) {
+      const { x, y } = currentStroke[0];
+      continueStroke(x + 0.01, y);
+    }
     addAction({
       type: "stroke",
       points: [...currentStroke],
@@ -56,65 +70,61 @@ function endStroke() {
   }
   isDrawing = false;
   currentStroke = [];
+  activePointerId = null;
 }
 
-// Cancel stroke without saving (used when multi-touch detected)
+// Drop the in-progress stroke and erase its pixels (used when the browser
+// takes over the gesture, e.g. a second finger starts a pinch).
 function cancelStroke() {
+  const hadInk = isDrawing && currentStroke.length > 1;
   isDrawing = false;
   currentStroke = [];
+  activePointerId = null;
+  if (hadInk) {
+    (window as any).guestbook?.redrawActions();
+  }
 }
 
-function handleMouseDown(e: MouseEvent) {
+function handlePointerDown(e: PointerEvent) {
   if ((window as any).guestbookMode !== "draw") return;
+  // Ignore secondary pointers (second finger) and non-primary mouse buttons.
+  if (activePointerId !== null || !e.isPrimary) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+
+  activePointerId = e.pointerId;
+  // Keep receiving moves even if the pointer leaves the canvas.
+  try {
+    (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
+  } catch {
+    /* capture is best-effort */
+  }
   const { x, y } = getCoords(e);
   startStroke(x, y);
 }
 
-function handleMouseMove(e: MouseEvent) {
-  if ((window as any).guestbookMode !== "draw" || !isDrawing) return;
-  const { x, y } = getCoords(e);
-  continueStroke(x, y);
+function handlePointerMove(e: PointerEvent) {
+  if (!isDrawing || e.pointerId !== activePointerId) return;
+
+  // Phones sample touch faster than they dispatch events; the coalesced
+  // list gives us the intermediate positions for smoother lines.
+  const events =
+    typeof e.getCoalescedEvents === "function" && e.getCoalescedEvents().length
+      ? e.getCoalescedEvents()
+      : [e];
+  for (const ev of events) {
+    const { x, y } = getCoords(ev);
+    continueStroke(x, y);
+  }
 }
 
-function handleMouseUp() {
+function handlePointerUp(e: PointerEvent) {
+  if (e.pointerId !== activePointerId) return;
   endStroke();
 }
 
-function handleTouchStart(e: TouchEvent) {
-  if ((window as any).guestbookMode !== "draw") return;
-  
-  // Multi-touch: cancel any drawing and let browser handle zoom/pan
-  if (e.touches.length > 1) {
-    cancelStroke();
-    return; // Don't preventDefault - allow pinch zoom
-  }
-  
-  e.preventDefault();
-  const { x, y } = getCoords(e.touches[0]);
-  startStroke(x, y);
-}
-
-function handleTouchMove(e: TouchEvent) {
-  if ((window as any).guestbookMode !== "draw") return;
-  
-  // Multi-touch: cancel drawing and let browser handle zoom/pan
-  if (e.touches.length > 1) {
-    cancelStroke();
-    return; // Don't preventDefault - allow pinch zoom
-  }
-  
-  if (!isDrawing) return;
-  
-  e.preventDefault();
-  const { x, y } = getCoords(e.touches[0]);
-  continueStroke(x, y);
-}
-
-function handleTouchEnd(e: TouchEvent) {
-  // Only end stroke if no more touches remain
-  if (e.touches.length === 0) {
-    endStroke();
-  }
+function handlePointerCancel(e: PointerEvent) {
+  if (e.pointerId !== activePointerId) return;
+  cancelStroke();
 }
 
 export function setBrushSize(size: number) {
@@ -129,9 +139,7 @@ export function getBrushSize() {
 export function drawStroke(action: { points: { x: number; y: number }[]; brushSize: number }) {
   if (action.points.length < 2) return;
   
-  ctx.lineWidth = action.brushSize;
-  ctx.strokeStyle = DRAW_COLOR;
-  ctx.lineCap = "round";
+  applyStrokeStyle(action.brushSize);
   ctx.beginPath();
   ctx.moveTo(action.points[0].x, action.points[0].y);
   

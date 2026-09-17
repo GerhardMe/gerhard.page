@@ -34,6 +34,12 @@
 
   #drawing-canvas {
     cursor: crosshair;
+    /* One finger draws; two fingers are left to the browser for pinch-zoom
+       and two-finger pan. Single-finger scrolling over the canvas is off. */
+    touch-action: pinch-zoom;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   #drawing-canvas.text-mode {
@@ -74,7 +80,7 @@
   state.drawingCtx = drawingCtx;
   state.guestbookCtx = guestbookCtx;
 
-  function getCanvasCoords(e: MouseEvent | Touch): { x: number; y: number } {
+  function getCanvasCoords(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = drawingCanvas.getBoundingClientRect();
     const scaleX = state.canvasWidth / rect.width;
     const scaleY = state.canvasHeight / rect.height;
