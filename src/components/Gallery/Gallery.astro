@@ -67,9 +67,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
 
 <script is:inline>
   const container = document.getElementById("gallery");
-  if (!container) {
-    // nothing to do
-  } else {
+  if (container) {
     const maxSize = Number(container.dataset.max || 360);
     const delayMs = Number(container.dataset.delay || 100);
     const rotRange = Number(container.dataset.rot || 30);
@@ -138,7 +136,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
       const containerTop = container.getBoundingClientRect().top + scrollY;
       const centerTop = Math.max(
         0,
-        scrollY + vh / 2 - targetH / 2 - containerTop
+        scrollY + vh / 2 - targetH / 2 - containerTop,
       );
       img.style.top = centerTop + "px";
       img.style.transform = "rotate(0deg)";
@@ -164,7 +162,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
       if (img.decode) return img.decode().catch(() => {});
       if (img.complete) return Promise.resolve();
       return new Promise((res) =>
-        img.addEventListener("load", res, { once: true })
+        img.addEventListener("load", res, { once: true }),
       );
     }
 
@@ -360,7 +358,7 @@ const shuffled = [...images].sort(() => Math.random() - 0.5);
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(relayout, 150);
       },
-      { passive: true }
+      { passive: true },
     );
 
     for (const img of imgs) {
