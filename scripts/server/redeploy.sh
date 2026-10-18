@@ -21,6 +21,18 @@ pnpm install --frozen-lockfile
 echo "[gerhardPage] building..."
 pnpm run build
 
+echo "[gerhardPage] syncing unit files (if changed)..."
+units_changed=0
+for unit in gerhardPage.service gerhardPageServer.service; do
+  if ! cmp -s "scripts/server/$unit" "/etc/systemd/system/$unit"; then
+    sudo cp "scripts/server/$unit" "/etc/systemd/system/$unit"
+    units_changed=1
+  fi
+done
+if [ "$units_changed" -eq 1 ]; then
+  sudo systemctl daemon-reload
+fi
+
 echo "[gerhardPage] restarting services..."
 sudo systemctl restart gerhardPage.service gerhardPageServer.service
 
