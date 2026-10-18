@@ -276,6 +276,51 @@ function handleGet(): void {
     imagedestroy($composite);
 }
 
+// Commit a saved drawing to the backend git repo (one commit per drawing).
+// The repo lives at backend/data (gitignored by the app repo) and is used by
+// the git-based backup system. Git failures are logged but never break the
+// drawing save. No remote is configured — it is a purely local repo.
+function commitDrawing(string $filepath, string $filename): void {
+    $repoRoot = dirname(DATA_DIR); // backend/data
+    $git = is_executable('/usr/bin/git') ? '/usr/bin/git' : 'git';
+    $repo = escapeshellarg($repoRoot);
+
+    // Serialize concurrent commits (flock file lives outside the repo)
+    $lock = fopen(sys_get_temp_dir() . '/gp-drawing-git.lock', 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) {
+        error_log("git commit skipped for $filename: could not acquire lock");
+        return;
+    }
+
+    try {
+        // Auto-init the repo (idempotent)
+        if (!is_dir("$repoRoot/.git")) {
+            exec("$git -C $repo init -q", $out, $code);
+            if ($code === 0) {
+                exec("$git -C $repo config user.name 'gerhard.page backend'");
+                exec("$git -C $repo config user.email 'backend@gerhard.page'");
+                file_put_contents("$repoRoot/.gitignore", "head_*.png\n");
+            } else {
+                error_log("git init failed in $repoRoot: " . implode("\n", $out));
+                return;
+            }
+        }
+
+        exec(
+            "$git -C $repo add " . escapeshellarg($filepath)
+            . " && $git -C $repo commit -q -m " . escapeshellarg("drawing: $filename"),
+            $out,
+            $code
+        );
+        if ($code !== 0) {
+            error_log("git commit failed for $filename: " . implode("\n", $out));
+        }
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
 // Handle POST request - save new layer
 function handlePost(): void {
     // Read JSON body
@@ -344,6 +389,9 @@ function handlePost(): void {
     imagesavealpha($grayscale, true);
     imagepng($grayscale, $filepath);
     imagedestroy($grayscale);
+
+    // Commit the drawing to the backend git repo
+    commitDrawing($filepath, $filename);
 
     error_log("Saved: $filename (page $page)");
     echo 'OK';
