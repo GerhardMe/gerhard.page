@@ -196,7 +196,6 @@ function handleGet(): void {
         $blank = createBlankImage();
         header('Content-Type: image/png');
         imagepng($blank);
-        imagedestroy($blank);
         return;
     }
 
@@ -246,11 +245,9 @@ function handleGet(): void {
 
         // Colorize the grayscale layer
         $colored = colorize($layer);
-        imagedestroy($layer);
 
         // Composite onto result
         compositeOver($composite, $colored);
-        imagedestroy($colored);
 
         // Track latest timestamp
         if (preg_match('/^(\d+)_/', basename($file), $matches)) {
@@ -273,7 +270,6 @@ function handleGet(): void {
     // Output PNG
     header('Content-Type: image/png');
     imagepng($composite);
-    imagedestroy($composite);
 }
 
 // Commit a saved drawing to the backend git repo (one commit per drawing).
@@ -370,7 +366,6 @@ function handlePost(): void {
 
     // Convert to grayscale
     $grayscale = toGrayscale($img);
-    imagedestroy($img);
 
     // Ensure directory exists
     $pageDir = DATA_DIR . '/' . $page;
@@ -388,7 +383,6 @@ function handlePost(): void {
     // Save PNG
     imagesavealpha($grayscale, true);
     imagepng($grayscale, $filepath);
-    imagedestroy($grayscale);
 
     // Commit the drawing to the backend git repo
     commitDrawing($filepath, $filename);
@@ -415,10 +409,8 @@ function buildHead(string $pageDir): ?string {
 
         imagesavealpha($layer, true);
         $colored = colorize($layer);
-        imagedestroy($layer);
 
         compositeOver($composite, $colored);
-        imagedestroy($colored);
 
         if (preg_match('/^(\d+)_/', basename($file), $matches)) {
             $latestTimestamp = max($latestTimestamp, (int)$matches[1]);
@@ -429,11 +421,9 @@ function buildHead(string $pageDir): ?string {
         $headFile = $pageDir . '/head_' . $latestTimestamp . '.png';
         imagesavealpha($composite, true);
         imagepng($composite, $headFile);
-        imagedestroy($composite);
         return $headFile;
     }
 
-    imagedestroy($composite);
     return null;
 }
 
@@ -487,7 +477,6 @@ function getPageUsage(int $page): float {
         }
     }
 
-    imagedestroy($img);
 
     if ($sampledPixels === 0) {
         return 0.0;

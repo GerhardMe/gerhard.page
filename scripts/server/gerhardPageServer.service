@@ -7,7 +7,7 @@ Type=simple
 User=server
 Group=server
 WorkingDirectory=/home/server/gerhardPage/backend
-ExecStart=/usr/bin/php -S 0.0.0.0:3001 index.php
+ExecStart=/usr/bin/php -d session.upload_progress.enabled=0 -d display_errors=0 -d log_errors=1 -S 127.0.0.1:3001 index.php
 Restart=always
 RestartSec=3
 
